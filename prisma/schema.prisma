@@ -1,0 +1,112 @@
+// Prisma Schema for Ratel Platform (منصة راتِل)
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  STUDENT
+  TEACHER
+  GUEST
+  ADMIN
+}
+
+enum LessonStatus {
+  SCHEDULED
+  COMPLETED
+  CANCELLED
+}
+
+model User {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  nameAr    String
+  nameEn    String
+  role      Role     @default(STUDENT)
+  avatar    String?
+  createdAt DateTime @default(now())
+
+  studentProfile StudentProfile?
+  teacherProfile TeacherProfile?
+}
+
+model StudentProfile {
+  id                    String   @id @default(uuid())
+  userId                String   @unique
+  user                  User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  activePlanId          String?
+  remainingLessons      Int      @default(0)
+  totalLessonsCompleted Int      @default(0)
+  totalHoursLearned     Float    @default(0.0)
+  assignedTeacherId     String?
+}
+
+model TeacherProfile {
+  id               String   @id @default(uuid())
+  userId           String   @unique
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  titleAr          String
+  titleEn          String
+  ijazahDetailsAr  String
+  ijazahDetailsEn  String
+  experienceYears  Int      @default(0)
+  languagesSpoken  String
+  specializations  String
+  bioAr            String
+  bioEn            String
+  hourlyRate       Float    @default(20.0)
+  ratingAvg        Float    @default(5.0)
+  totalReviews     Int      @default(0)
+  workingHoursStart String  @default("12:00")
+  workingHoursEnd   String  @default("18:00")
+  bookedTimeSlots   String  @default("[]")
+}
+
+model SubscriptionPlan {
+  id                    String  @id @default(uuid())
+  titleAr               String
+  titleEn               String
+  subtitleAr            String
+  subtitleEn            String
+  lessonsPerMonth       Int
+  totalHours            Float
+  lessonDurationMinutes Int
+  priceMonthly          Float
+  recommended           Boolean @default(false)
+  badgeAr               String?
+  badgeEn               String?
+  featuresAr            String
+  featuresEn            String
+  color                 String
+}
+
+model Lesson {
+  id              String       @id @default(uuid())
+  studentId       String
+  teacherId       String
+  date            String
+  time            String
+  durationMinutes Int
+  status          LessonStatus @default(SCHEDULED)
+  googleMeetUrl   String
+  notes           String?
+  surahTargetAr   String?
+  surahTargetEn   String?
+  createdAt       DateTime     @default(now())
+}
+
+model Review {
+  id            String   @id @default(uuid())
+  teacherId     String
+  studentNameAr String
+  studentNameEn String
+  rating        Int
+  commentAr     String
+  commentEn     String
+  createdAt     DateTime @default(now())
+}
