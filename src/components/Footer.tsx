@@ -47,19 +47,19 @@ export const Footer: React.FC = () => {
               <li>
                 <Link href="/#plans" className="hover:text-amber-300 transition-colors flex items-center gap-1.5">
                   <span className="w-1.5 h-1.5 rounded-full bg-amber-400"></span>
-                  {isAr ? 'باقة التلاوة والتصحيح (4 حصص / شهر)' : 'Tilawah & Tajweed (4 classes/mo)'}
+                  {isAr ? 'الباقة المجانية (4 حصص / شهر)' : 'Free Plan (4 classes/mo)'}
                 </Link>
               </li>
               <li>
                 <Link href="/#plans" className="hover:text-amber-300 transition-colors flex items-center gap-1.5">
                   <span className="w-1.5 h-1.5 rounded-full bg-amber-400"></span>
-                  {isAr ? 'باقة الحفظ والمدارسة (8 حصص / شهر)' : 'Hifz & Study Plan (8 classes/mo)'}
+                  {isAr ? 'الباقة الأساسية (8 حصص / شهر)' : 'Basic Plan (8 classes/mo)'}
                 </Link>
               </li>
               <li>
                 <Link href="/#plans" className="hover:text-amber-300 transition-colors flex items-center gap-1.5">
                   <span className="w-1.5 h-1.5 rounded-full bg-amber-400"></span>
-                  {isAr ? 'الباقة المكثفة والإجازة (12 حصة / شهر)' : 'Intensive & Ijazah (12 classes/mo)'}
+                  {isAr ? 'الباقة المكثفة (12 حصة / شهر)' : 'Intensive Plan (12 classes/mo)'}
                 </Link>
               </li>
             </ul>

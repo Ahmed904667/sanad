@@ -13,8 +13,8 @@ import {
 export const INITIAL_PLANS: SubscriptionPlan[] = [
   {
     id: 'plan-basic',
-    titleAr: 'الباقة التجريبية المجانية',
-    titleEn: 'Free Starter Plan',
+    titleAr: 'الباقة المجانية',
+    titleEn: 'Free Plan',
     subtitleAr: '4 حصص شهرياً مجاناً (حصة أسبوعياً) لتجربة التعلم مع المعلمين المجازين',
     subtitleEn: '4 classes monthly for Free (1 class/week) to experience learning with certified scholars',
     lessonsPerMonth: 4,
@@ -39,8 +39,8 @@ export const INITIAL_PLANS: SubscriptionPlan[] = [
   },
   {
     id: 'plan-standard',
-    titleAr: 'باقة الحفظ والمدارسة الموصى بها',
-    titleEn: 'Recommended Hifz & Study Plan',
+    titleAr: 'الباقة الأساسية',
+    titleEn: 'Basic Plan',
     subtitleAr: '8 حصص شهرياً (حصتان أسبوعياً) لبناء حفظ متقن ومستمر',
     subtitleEn: '8 classes monthly (2 classes/week) for structured memorization & mastery',
     lessonsPerMonth: 8,
@@ -66,8 +66,8 @@ export const INITIAL_PLANS: SubscriptionPlan[] = [
   },
   {
     id: 'plan-intensive',
-    titleAr: 'الباقة المكثفة والإجازة بالسند',
-    titleEn: 'Intensive & Ijazah Mastery Plan',
+    titleAr: 'الباقة المكثفة',
+    titleEn: 'Intensive Plan',
     subtitleAr: '12 حصة شهرياً (3 حصص أسبوعياً) لإنجاز الحفظ والإجازة بالسند المتصل',
     subtitleEn: '12 classes monthly (3 classes/week) for accelerated Hifz & Continuous Chain Ijazah',
     lessonsPerMonth: 12,
