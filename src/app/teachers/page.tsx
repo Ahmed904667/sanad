@@ -61,44 +61,67 @@ export default function TeachersPage() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         
         {/* Header Title */}
-        <div className="mb-10 text-center max-w-2xl mx-auto space-y-3">
-          <div className="inline-flex items-center gap-2 bg-emerald-100 text-emerald-800 px-3.5 py-1 rounded-full text-xs font-bold">
+        <div className="mb-8 text-center max-w-xl mx-auto space-y-2">
+          <div className="inline-flex items-center gap-1.5 bg-emerald-100 text-emerald-900 px-3.5 py-1 rounded-full text-xs font-bold">
             <Award className="w-4 h-4 text-amber-600" />
-            <span>{isAr ? 'نخبة المقرئين والمعلمين المجازين بالسند' : 'Certified Scholars & Teachers'}</span>
+            <span>{isAr ? 'نخبة المقرئين المعتمَدين' : 'Certified Scholars'}</span>
           </div>
 
-          <h1 className="text-3xl sm:text-4xl font-black text-emerald-950">
-            {isAr ? 'دليل المعلمين وتصفح المواعيد المتاحة' : 'Available Teachers Directory'}
+          <h1 className="text-2xl sm:text-4xl font-black text-slate-900">
+            {isAr ? 'دليل المعلمين وتصفح المواعيد المتاحة' : 'Certified Scholars Directory'}
           </h1>
 
-          <p className="text-slate-600 text-xs sm:text-sm leading-relaxed">
+          <p className="text-slate-500 text-xs sm:text-sm font-medium">
             {isAr 
-              ? 'تصفح سِيَر المعلمين والمعلمات الحاملين للإجازات المعتمدة بالسند المتصل، مع استبعاد المعلمين أصحاب الجداول المكتملة تلقائياً.' 
-              : 'Discover certified male & female Quran teachers holding authentic Ijazah credentials.'}
+              ? 'تصفح سِيَر المقرئين الحاملين للإجازات المعتمدة بالسند المتصل واطلع على المواعيد المتاحة.' 
+              : 'Browse certified Quran scholars holding authentic Ijazah credentials.'}
           </p>
         </div>
 
         {/* Filter & Search Bar */}
-        <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-200/80 mb-10 space-y-5">
+        <div className="bg-white p-5 rounded-3xl shadow-sm border border-slate-200/80 mb-8 space-y-4">
           
-          {/* AUTOMATIC GENDER MATCHING & AVAILABILITY CONTROLS */}
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-slate-100 pb-4">
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-extrabold text-slate-700">{isAr ? 'تصفية جنس المعلمين:' : 'Scholar Gender Filter:'}</span>
-              <span className="bg-emerald-100 text-emerald-900 font-extrabold text-xs px-3 py-1 rounded-full border border-emerald-200">
-                {isAr ? `تطابق تلقائي لجنس الطالب (${student.gender === 'FEMALE' ? 'معلمات نساء' : 'معلمون رجال'})` : `Matched to Student (${student.gender || 'MALE'})`}
-              </span>
+          {/* Gender Tabs & Availability Toggle */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">
+            <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-2xl">
+              <button
+                type="button"
+                onClick={() => setSelectedGender('ALL')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                  selectedGender === 'ALL' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-600'
+                }`}
+              >
+                {isAr ? 'الكل' : 'All'}
+              </button>
+              <button
+                type="button"
+                onClick={() => setSelectedGender('MALE')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                  selectedGender === 'MALE' ? 'bg-emerald-800 text-white shadow-xs' : 'text-slate-600'
+                }`}
+              >
+                {isAr ? 'معلمون رجال' : 'Male Scholars'}
+              </button>
+              <button
+                type="button"
+                onClick={() => setSelectedGender('FEMALE')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                  selectedGender === 'FEMALE' ? 'bg-emerald-800 text-white shadow-xs' : 'text-slate-600'
+                }`}
+              >
+                {isAr ? 'معلمات نساء' : 'Female Scholars'}
+              </button>
             </div>
 
             {/* HIDE FULL TIMETABLE TEACHERS CHECKBOX TOGGLE */}
-            <label className="flex items-center gap-2 text-xs font-bold text-slate-700 cursor-pointer bg-amber-50 px-3 py-1.5 rounded-xl border border-amber-200">
+            <label className="flex items-center gap-2 text-xs font-bold text-slate-700 cursor-pointer bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-200">
               <input
                 type="checkbox"
                 checked={hideFullyBooked}
                 onChange={(e) => setHideFullyBooked(e.target.checked)}
                 className="w-4 h-4 accent-emerald-600 rounded cursor-pointer"
               />
-              <span>{isAr ? 'إخفاء المعلمين أصحاب الجدول المكتمل' : 'Hide Fully Booked Teachers'}</span>
+              <span>{isAr ? 'المواعيد المتاحة فقط' : 'Available Slots Only'}</span>
             </label>
           </div>
 

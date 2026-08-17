@@ -109,21 +109,21 @@ export default function HelpPage() {
         </div>
 
         {/* Support Contact Box */}
-        <div className="emerald-gradient-bg text-white rounded-3xl p-8 shadow-xl text-center space-y-4 border border-emerald-700/60">
-          <h3 className="text-2xl font-black">
+        <div className="bg-gradient-to-r from-emerald-950 via-teal-900 to-emerald-900 text-white rounded-3xl p-7 shadow-xl text-center space-y-4 border border-emerald-700/60">
+          <h3 className="text-xl sm:text-2xl font-black">
             {isAr ? 'لم تجد الإجابة التي تبحث عنها؟' : 'Still Need Assistance?'}
           </h3>
-          <p className="text-emerald-100/90 text-xs sm:text-sm max-w-xl mx-auto">
+          <p className="text-emerald-100/90 text-xs sm:text-sm max-w-xl mx-auto font-medium">
             {isAr ? 'فريق الدعم الفني متواجد لمساعدتك طوال أيام الأسبوع.' : 'Our support team is available 7 days a week.'}
           </p>
 
-          <div className="flex flex-wrap items-center justify-center gap-6 pt-2 text-xs font-bold">
-            <div className="flex items-center gap-2 bg-emerald-900/80 px-4 py-2 rounded-xl border border-emerald-700">
+          <div className="flex flex-wrap items-center justify-center gap-4 pt-2 text-xs font-bold">
+            <div className="flex items-center gap-2 bg-emerald-900/80 px-4 py-2 rounded-xl border border-emerald-700/80">
               <Mail className="w-4 h-4 text-amber-400" />
-              <span>support@ratel-quran.com</span>
+              <span>support@sanad-quran.com</span>
             </div>
 
-            <div className="flex items-center gap-2 bg-emerald-900/80 px-4 py-2 rounded-xl border border-emerald-700">
+            <div className="flex items-center gap-2 bg-emerald-900/80 px-4 py-2 rounded-xl border border-emerald-700/80">
               <Phone className="w-4 h-4 text-amber-400" />
               <span dir="ltr">+966 800 124 9999</span>
             </div>
