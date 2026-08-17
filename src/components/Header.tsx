@@ -38,16 +38,8 @@ export const Header: React.FC = () => {
   const unreadCount = notifications.filter(n => !n.read).length;
   const isAr = language === 'ar';
 
-  // Check if route is a dashboard/authenticated portal route
-  const isAuthenticatedRoute = 
-    pathname.startsWith('/student') || 
-    pathname.startsWith('/teacher') || 
-    pathname.startsWith('/admin') ||
-    pathname === '/subscriptions' ||
-    pathname === '/profile' ||
-    (currentUser !== null && pathname !== '/' && pathname !== '/teachers');
-
-  if (isAuthenticatedRoute) {
+  // Render DashboardHeader whenever a user is logged in
+  if (currentUser !== null) {
     return <DashboardHeader />;
   }
 
@@ -123,31 +115,6 @@ export const Header: React.FC = () => {
 
           {!isHydrated ? (
             <div className="w-24 h-7 bg-slate-100 animate-pulse rounded-xl"></div>
-          ) : currentUser ? (
-            <div className="flex items-center gap-3 pl-2 border-l border-slate-200">
-              <AvatarBadge
-                nameAr={currentUser.nameAr}
-                nameEn={currentUser.nameEn}
-                size="sm"
-              />
-              <button
-                onClick={() => {
-                  if (role === 'STUDENT') router.push('/student/dashboard');
-                  else if (role === 'TEACHER') router.push('/teacher/dashboard');
-                  else if (role === 'ADMIN') router.push('/admin/dashboard');
-                }}
-                className="emerald-gradient-bg text-white px-3.5 py-1.5 rounded-xl text-xs font-bold shadow-xs hover:opacity-95 cursor-pointer"
-              >
-                {isAr ? 'لوحة التحكم' : 'My Dashboard'}
-              </button>
-              <button
-                onClick={handleLogout}
-                className="p-1.5 text-slate-400 hover:text-red-600 transition-colors cursor-pointer"
-                title={isAr ? 'تسجيل الخروج' : 'Logout'}
-              >
-                <LogOut className="w-4 h-4" />
-              </button>
-            </div>
           ) : (
             <div className="flex items-center gap-2">
               <Link

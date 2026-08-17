@@ -130,6 +130,16 @@ export const DashboardHeader: React.FC = () => {
                   <CreditCard className="w-3.5 h-3.5" />
                   <span>{isAr ? 'إدارة الاشتراكات' : 'Subscriptions'}</span>
                 </Link>
+
+                <Link
+                  href="/teachers"
+                  className={`hover:text-amber-400 transition-colors py-1 flex items-center gap-1 ${
+                    pathname === '/teachers' ? 'text-amber-400 font-extrabold border-b-2 border-amber-400' : ''
+                  }`}
+                >
+                  <Users className="w-3.5 h-3.5" />
+                  <span>{isAr ? 'دليل المعلمين' : 'Scholars'}</span>
+                </Link>
               </>
             )}
 
