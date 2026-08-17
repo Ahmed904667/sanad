@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { usePathname, useRouter } from 'next/navigation';
 import { useApp } from '../context/AppContext';
 import { DashboardHeader } from './DashboardHeader';
@@ -51,19 +52,16 @@ export const Header: React.FC = () => {
   return (
     <header className="sticky top-0 z-50 w-full border-b border-emerald-900/10 bg-white/95 backdrop-blur-md shadow-xs transition-all">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
-        {/* Brand Logo */}
-        <Link href="/" className="flex items-center gap-3 group">
-          <div className="w-10 h-10 rounded-xl emerald-gradient-bg flex items-center justify-center text-amber-400 shadow-sm group-hover:scale-105 transition-transform">
-            <BookOpen className="w-5 h-5 stroke-[2.2]" />
-          </div>
-          <div className="flex flex-col">
-            <span className="font-extrabold text-xl tracking-tight text-emerald-950 leading-tight">
-              سَنَـد <span className="text-amber-500 font-bold text-base">Sanad</span>
-            </span>
-            <span className="text-[10px] text-emerald-700 font-medium">
-              {isAr ? 'تعليم القرآن الكريم بالسند' : 'Certified Quran Learning'}
-            </span>
-          </div>
+        {/* Brand Logo - Keep logo emblem only */}
+        <Link href="/" className="flex items-center group">
+          <Image 
+            src="/logo.png" 
+            alt="Sanad Logo" 
+            width={52} 
+            height={52} 
+            className="h-12 w-auto object-contain group-hover:scale-105 transition-transform"
+            priority
+          />
         </Link>
 
         {/* Public Navigation Links */}

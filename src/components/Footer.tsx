@@ -2,6 +2,7 @@
 
 import React from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { useApp } from '../context/AppContext';
 import { BookOpen, ShieldCheck, Heart, Mail, Phone, MapPin, ExternalLink } from 'lucide-react';
 
@@ -16,13 +17,14 @@ export const Footer: React.FC = () => {
           
           {/* Col 1: Brand & Ayah */}
           <div className="space-y-4 md:col-span-1">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl gold-gradient-bg flex items-center justify-center text-emerald-950 shadow-md">
-                <BookOpen className="w-6 h-6 stroke-[2.2]" />
-              </div>
-              <span className="font-extrabold text-2xl tracking-tight text-white">
-                سَنَـد <span className="text-amber-400 font-bold text-lg">Sanad</span>
-              </span>
+            <div className="flex items-center">
+              <Image 
+                src="/logo.png" 
+                alt="Sanad Logo" 
+                width={56} 
+                height={56} 
+                className="h-14 w-auto object-contain brightness-125"
+              />
             </div>
             
             <p className="text-amber-300 font-serif italic text-base bg-emerald-900/60 p-3 rounded-xl border border-amber-500/20 leading-relaxed">

@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { usePathname, useRouter } from 'next/navigation';
 import { useApp } from '../context/AppContext';
 import { AvatarBadge } from './AvatarBadge';
@@ -88,13 +89,15 @@ export const DashboardHeader: React.FC = () => {
         
         {/* Brand Logo & Portal Links */}
         <div className="flex items-center gap-6">
-          <Link href="/" className="flex items-center gap-2.5 group" title="Return to Landing Page">
-            <div className="w-9 h-9 rounded-xl emerald-gradient-bg flex items-center justify-center text-amber-400 shadow-sm group-hover:scale-105 transition-transform">
-              <BookOpen className="w-5 h-5 stroke-[2.2]" />
-            </div>
-            <span className="font-black text-lg tracking-tight text-white">
-              سَنَـد <span className="text-amber-400 text-xs font-bold">Sanad</span>
-            </span>
+          <Link href="/" className="flex items-center group" title="Return to Landing Page">
+            <Image 
+              src="/logo.png" 
+              alt="Sanad Logo" 
+              width={48} 
+              height={48} 
+              className="h-11 w-auto object-contain group-hover:scale-105 transition-transform"
+              priority
+            />
           </Link>
 
           {/* Dedicated Navigation Links */}
