@@ -2,6 +2,7 @@
 
 import React from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useApp } from '@/context/AppContext';
 import { PlansGrid } from '@/components/PlansGrid';
 import { TeacherCard } from '@/components/TeacherCard';
@@ -19,12 +20,15 @@ import {
   User,
   GraduationCap,
   Building2,
-  LogIn
+  LogIn,
+  Star
 } from 'lucide-react';
 
 export default function Home() {
+  const router = useRouter();
   const { language, teachers } = useApp();
   const isAr = language === 'ar';
+  const topScholars = teachers.slice(0, 3);
 
   return (
     <div className="space-y-0">
@@ -183,7 +187,12 @@ export default function Home() {
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {teachers.slice(0, 3).map((teacher) => (
-              <TeacherCard key={teacher.id} teacher={teacher} />
+              <TeacherCard 
+                key={teacher.id} 
+                teacher={teacher}
+                onBook={() => router.push('/teachers')}
+                onViewDetails={() => router.push('/teachers')}
+              />
             ))}
           </div>
         </div>
