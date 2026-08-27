@@ -252,36 +252,17 @@ export default function NewLandingPage() {
 
             </div>
 
-            {/* Hero Right: Clean Graphic Composition (Matching Sample) */}
-            <div className="lg:col-span-5 flex justify-center items-center relative">
-              <div className="relative w-[320px] sm:w-[380px] lg:w-[420px] aspect-[4/5] flex items-center justify-center">
-                
-                {/* SVG Concentric Contour Lines Background */}
-                <svg className="absolute inset-0 w-full h-full text-emerald-200/80 pointer-events-none" viewBox="0 0 400 500" fill="none" stroke="currentColor">
-                  <ellipse cx="200" cy="250" rx="190" ry="240" strokeWidth="1.5" strokeDasharray="4 6" />
-                  <ellipse cx="200" cy="250" rx="160" ry="200" strokeWidth="1.5" />
-                  <ellipse cx="200" cy="250" rx="130" ry="160" strokeWidth="1" strokeDasharray="3 3" />
-                  <ellipse cx="200" cy="250" rx="100" ry="120" strokeWidth="1" />
-                </svg>
-
-                {/* Primary Organic Emerald Circle Backdrop (Matching Sample Design) */}
-                <div className="absolute w-[280px] sm:w-[330px] lg:w-[360px] h-[280px] sm:h-[330px] lg:h-[360px] rounded-full bg-gradient-to-br from-emerald-500 via-emerald-600 to-teal-700 shadow-2xl" />
-
-                {/* Inner Glow */}
-                <div className="absolute w-[250px] sm:w-[300px] h-[250px] sm:h-[300px] rounded-full bg-emerald-400/20 blur-2xl" />
-
-                {/* Cutout Man Reading Quran Image (Seamlessly overlapping circle) */}
-                <div className="relative z-10 w-[270px] sm:w-[320px] lg:w-[350px] h-[400px] sm:h-[460px] lg:h-[500px]">
-                  <Image
-                    src="/images/quran-reader-cutout.png"
-                    alt="قارئ القرآن الكريم"
-                    fill
-                    sizes="(max-width: 768px) 320px, 350px"
-                    className="object-contain object-bottom drop-shadow-2xl"
-                    priority
-                  />
-                </div>
-
+            {/* Hero Right: Exact Graphic Composition */}
+            <div className="lg:col-span-5 flex justify-center items-center">
+              <div className="relative w-full max-w-[360px] sm:max-w-[440px] aspect-[535/585]">
+                <Image
+                  src="/images/hero-quran-man.png"
+                  alt="قارئ القرآن الكريم - منصة سَنَد"
+                  fill
+                  sizes="(max-width: 768px) 360px, 440px"
+                  className="object-contain drop-shadow-xl"
+                  priority
+                />
               </div>
             </div>
 
