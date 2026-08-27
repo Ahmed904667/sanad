@@ -252,14 +252,14 @@ export default function NewLandingPage() {
 
             </div>
 
-            {/* Hero Right: Exact Graphic Composition */}
+            {/* Hero Right: Centered Graphic Composition */}
             <div className="lg:col-span-5 flex justify-center items-center">
-              <div className="relative w-full max-w-[360px] sm:max-w-[440px] aspect-[535/585]">
+              <div className="relative w-full max-w-[380px] sm:max-w-[460px] aspect-[600/650]">
                 <Image
-                  src="/images/hero-quran-man.png"
+                  src="/images/hero-quran-man-centered.png"
                   alt="قارئ القرآن الكريم - منصة سَنَد"
                   fill
-                  sizes="(max-width: 768px) 360px, 440px"
+                  sizes="(max-width: 768px) 380px, 460px"
                   className="object-contain drop-shadow-xl"
                   priority
                 />
