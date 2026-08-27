@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
 import { useApp } from '@/context/AppContext';
 import { AvatarBadge } from '@/components/AvatarBadge';
@@ -23,33 +23,24 @@ import {
   Sparkles
 } from 'lucide-react';
 import { TeacherAvailabilityModal } from '@/components/TeacherAvailabilityModal';
+import { AuthGuard } from '@/components/AuthGuard';
 
-export default function TeacherDashboard() {
+function TeacherDashboardContent() {
   const { language, teacherProfile, currentUser, lessons, student, teachers, userAccounts } = useApp();
   const isAr = language === 'ar';
 
-  // Determine initial active teacher ID
+  // Determine active teacher object (strictly locked to logged-in teacher profile)
   const isTeacherRole = currentUser?.role === 'TEACHER';
-  const initialTeacherId = isTeacherRole 
-    ? currentUser.id 
-    : (student.assignedTeacherId || teacherProfile.id || 'tech-sulami');
-
-  const [selectedTeacherId, setSelectedTeacherId] = useState<string>(initialTeacherId);
-  const [isAvailabilityModalOpen, setIsAvailabilityModalOpen] = useState(false);
-
-  // Sync selected teacher ID if currentUser or student assigned teacher updates
-  useEffect(() => {
-    if (currentUser?.role === 'TEACHER') {
-      setSelectedTeacherId(currentUser.id);
-    } else if (student.assignedTeacherId) {
-      setSelectedTeacherId(student.assignedTeacherId);
+  const activeTeacher = useMemo(() => {
+    if (isTeacherRole && currentUser) {
+      return teachers.find(t => t.id === currentUser.id || t.email.toLowerCase() === currentUser.email.toLowerCase()) || 
+        teachers.find(t => t.id === teacherProfile.id) || 
+        teacherProfile;
     }
-  }, [currentUser, student.assignedTeacherId]);
+    return teachers.find(t => t.id === (student.assignedTeacherId || teacherProfile.id)) || teachers[0];
+  }, [currentUser, isTeacherRole, teachers, teacherProfile, student.assignedTeacherId]);
 
-  // Find active teacher object
-  const activeTeacher = teachers.find(t => t.id === selectedTeacherId) || 
-    teachers.find(t => t.id === teacherProfile.id) || 
-    teachers[0];
+  const [isAvailabilityModalOpen, setIsAvailabilityModalOpen] = useState(false);
 
   // Filter lessons belonging to this teacher for VERIFIED students only
   let teacherLessons = lessons.filter(l => {
@@ -96,26 +87,8 @@ export default function TeacherDashboard() {
             </div>
           </div>
 
-          {/* Teacher Selector Control */}
-          <div className="w-full md:w-auto flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
-            <div className="bg-emerald-950/70 backdrop-blur-md p-3 rounded-2xl border border-emerald-700/60 text-white space-y-1.5 shrink-0">
-              <label className="text-[11px] font-bold text-amber-300 block flex items-center gap-1">
-                <Users className="w-3.5 h-3.5" />
-                <span>{isAr ? 'اختر المعلم لعرض جدوله:' : 'Select Scholar View:'}</span>
-              </label>
-              <select
-                value={activeTeacher.id}
-                onChange={(e) => setSelectedTeacherId(e.target.value)}
-                className="w-full bg-slate-900 text-amber-300 font-bold text-xs p-2.5 rounded-xl border border-amber-400/40 focus:ring-2 focus:ring-amber-400 cursor-pointer shadow-xs"
-              >
-                {teachers.map(t => (
-                  <option key={t.id} value={t.id}>
-                    {isAr ? t.nameAr : t.nameEn}
-                  </option>
-                ))}
-              </select>
-            </div>
-
+          {/* Working Hours Management Button */}
+          <div className="w-full md:w-auto flex items-center justify-end">
             <button
               onClick={() => setIsAvailabilityModalOpen(true)}
               className="px-4.5 py-3 rounded-2xl gold-gradient-bg text-emerald-950 font-black text-xs shadow-md hover:brightness-110 transition-all flex items-center justify-center gap-2 cursor-pointer shrink-0"
@@ -125,6 +98,47 @@ export default function TeacherDashboard() {
             </button>
           </div>
         </div>
+
+        {/* ACCOUNT VERIFICATION STATUS ALERT BANNERS */}
+        {activeTeacher.approvalStatus === 'PENDING_ADMIN' && (
+          <div className="bg-amber-50 border-2 border-amber-300 rounded-3xl p-5 shadow-sm space-y-2 text-amber-950 animate-fade-in">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-2xl bg-amber-200 text-amber-900 flex items-center justify-center font-bold shrink-0">
+                <Clock className="w-5 h-5 text-amber-800" />
+              </div>
+              <div className="space-y-0.5">
+                <h3 className="font-black text-sm sm:text-base text-amber-950">
+                  {isAr ? 'حساب المعلم قيد التدقيق والمراجعة الإدارية (غير متاح للطلاب بعد)' : 'Teacher Account Pending Admin Review'}
+                </h3>
+                <p className="text-xs text-amber-900 font-semibold leading-relaxed">
+                  {isAr 
+                    ? 'تم تسجيل طلبك بنجاح. يتم حالياً تدقيق وتوثيق إجازتك وسندك القرآني من قبل إدارة منصة سَنَد. سيتم تفعيل حسابك بالكامل وإتاحته لحجوزات الطلاب فور اعتماد الإدارة.' 
+                    : 'Your account is under admin review. Once verified and approved by admin, your profile will be active for student bookings.'}
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {activeTeacher.approvalStatus === 'REJECTED' && (
+          <div className="bg-rose-50 border-2 border-rose-300 rounded-3xl p-5 shadow-sm space-y-2 text-rose-950 animate-fade-in">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-2xl bg-rose-200 text-rose-900 flex items-center justify-center font-bold shrink-0">
+                <AlertCircle className="w-5 h-5 text-rose-800" />
+              </div>
+              <div className="space-y-0.5">
+                <h3 className="font-black text-sm sm:text-base text-rose-950">
+                  {isAr ? 'لم يتم تفعيل حساب المعلم' : 'Teacher Account Not Approved'}
+                </h3>
+                <p className="text-xs text-rose-900 font-semibold leading-relaxed">
+                  {isAr 
+                    ? 'يرجى التواصل مع إدارة منصة سَنَد لاستكمال متطلبات وثائق السند بالإجازة.' 
+                    : 'Please contact Sanad administration to complete your Ijazah verification requirements.'}
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Quick Stats Grid */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -171,5 +185,13 @@ export default function TeacherDashboard() {
 
       </div>
     </div>
+  );
+}
+
+export default function TeacherDashboard() {
+  return (
+    <AuthGuard allowedRoles={['TEACHER']}>
+      <TeacherDashboardContent />
+    </AuthGuard>
   );
 }

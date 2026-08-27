@@ -1,10 +1,11 @@
-'use client';
+ 'use client';
 
 import React, { useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useApp } from '@/context/AppContext';
 import { AvatarBadge } from '@/components/AvatarBadge';
+import { AuthGuard } from '@/components/AuthGuard';
 import { getQuranTrackTitle } from '@/data/mockData';
 import { 
   Users, 
@@ -31,7 +32,7 @@ import {
   UserCheck
 } from 'lucide-react';
 
-export default function DedicatedStudentDetailsPage() {
+function DedicatedStudentDetailsContent() {
   const params = useParams();
   const router = useRouter();
   const studentId = params.id as string;
@@ -185,16 +186,6 @@ export default function DedicatedStudentDetailsPage() {
                   </span>
                 </div>
               </div>
-            </div>
-
-            <div className="flex items-center gap-2.5 w-full sm:w-auto shrink-0 relative z-10">
-              <Link
-                href="/student/plan-builder"
-                className="px-5 py-3 rounded-2xl gold-gradient-bg text-emerald-950 font-black text-xs shadow-lg hover:brightness-110 transition-all flex items-center justify-center gap-2 cursor-pointer w-full sm:w-auto"
-              >
-                <Edit3 className="w-4 h-4 stroke-[2.5]" />
-                <span>{isAr ? 'تعديل السور والجدول' : 'Edit Plan & Surahs'}</span>
-              </Link>
             </div>
           </div>
 
@@ -461,12 +452,6 @@ export default function DedicatedStudentDetailsPage() {
               <div className="text-center py-12 text-xs text-slate-500 font-bold bg-slate-50 rounded-3xl border border-slate-200/60 space-y-2">
                 <Calendar className="w-10 h-10 text-slate-300 mx-auto" />
                 <p>{isAr ? 'لا توجد حصص تطابق التصفية المحددة لهذا الطالب.' : 'No classes matching filter for this student.'}</p>
-                <Link
-                  href="/student/plan-builder"
-                  className="inline-block text-emerald-700 font-bold hover:underline pt-1"
-                >
-                  {isAr ? '+ جدولة حصص جديدة وتحديث السور' : '+ Build Custom Plan'}
-                </Link>
               </div>
             )}
           </div>
@@ -489,14 +474,6 @@ export default function DedicatedStudentDetailsPage() {
                   </p>
                 </div>
               </div>
-
-              <Link
-                href="/student/plan-builder"
-                className="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-amber-400 font-extrabold text-xs transition-colors flex items-center gap-1.5"
-              >
-                <Edit3 className="w-3.5 h-3.5 text-amber-400" />
-                <span>{isAr ? 'تعديل الخطة بالسور' : 'Edit Surah Plan'}</span>
-              </Link>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -583,5 +560,13 @@ export default function DedicatedStudentDetailsPage() {
 
       </div>
     </div>
+  );
+}
+
+export default function DedicatedStudentDetailsPage() {
+  return (
+    <AuthGuard allowedRoles={['TEACHER', 'ADMIN']}>
+      <DedicatedStudentDetailsContent />
+    </AuthGuard>
   );
 }

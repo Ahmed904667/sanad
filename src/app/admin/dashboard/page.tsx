@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useApp } from '@/context/AppContext';
 import { AvatarBadge } from '@/components/AvatarBadge';
 import { ClassCalendar } from '@/components/ClassCalendar';
+import { AuthGuard } from '@/components/AuthGuard';
 import { UserAccount, Role } from '@/types';
 import { 
   ShieldCheck, 
@@ -35,7 +36,7 @@ import {
   AlertTriangle
 } from 'lucide-react';
 
-export default function AdminDashboard() {
+function AdminDashboardContent() {
   const { 
     language, 
     currentUser, 
@@ -64,10 +65,10 @@ export default function AdminDashboard() {
   // New Account Form State
   const [newAccName, setNewAccName] = useState('');
   const [newAccEmail, setNewAccEmail] = useState('');
-  const [newAccPassword, setNewAccPassword] = useState('123456');
+  const [newAccPassword, setNewAccPassword] = useState('');
   const [newAccRole, setNewAccRole] = useState<Role>('STUDENT');
   const [newAccGender, setNewAccGender] = useState<'MALE' | 'FEMALE'>('MALE');
-  const [newAccPhone, setNewAccPhone] = useState('+966 50 ');
+  const [newAccPhone, setNewAccPhone] = useState('');
   const [createSuccessMsg, setCreateSuccessMsg] = useState('');
 
   // All Classes Search / Filter State
@@ -1065,5 +1066,13 @@ export default function AdminDashboard() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function AdminDashboard() {
+  return (
+    <AuthGuard allowedRoles={['ADMIN']}>
+      <AdminDashboardContent />
+    </AuthGuard>
   );
 }

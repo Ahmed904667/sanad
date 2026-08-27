@@ -29,7 +29,7 @@ export const BottomNav: React.FC = () => {
       return [];
     }
 
-    if (currentUser && (role === 'STUDENT' || pathname.startsWith('/student'))) {
+    if (currentUser && (currentUser.role === 'STUDENT' || role === 'STUDENT')) {
       return [
         {
           labelAr: 'الحصص',
@@ -51,12 +51,6 @@ export const BottomNav: React.FC = () => {
           icon: CreditCard,
         },
         {
-          labelAr: 'المعلمون',
-          labelEn: 'Scholars',
-          href: '/teachers',
-          icon: Users,
-        },
-        {
           labelAr: 'حسابي',
           labelEn: 'Profile',
           href: '/profile',
@@ -65,7 +59,7 @@ export const BottomNav: React.FC = () => {
       ];
     }
 
-    if (currentUser && (role === 'TEACHER' || pathname.startsWith('/teacher'))) {
+    if (currentUser && (currentUser.role === 'TEACHER' || role === 'TEACHER')) {
       return [
         {
           labelAr: 'الحصص',
@@ -81,12 +75,6 @@ export const BottomNav: React.FC = () => {
           icon: Users,
         },
         {
-          labelAr: 'الفهرس',
-          labelEn: 'Plan Builder',
-          href: '/student/plan-builder',
-          icon: Target,
-        },
-        {
           labelAr: 'حسابي',
           labelEn: 'Profile',
           href: '/profile',
@@ -95,7 +83,7 @@ export const BottomNav: React.FC = () => {
       ];
     }
 
-    if (currentUser && (role === 'ADMIN' || pathname.startsWith('/admin'))) {
+    if (currentUser && (currentUser.role === 'ADMIN' || role === 'ADMIN')) {
       return [
         {
           labelAr: 'الطلبات',
@@ -103,12 +91,6 @@ export const BottomNav: React.FC = () => {
           href: '/admin/dashboard',
           icon: ShieldCheck,
           exact: true,
-        },
-        {
-          labelAr: 'المعلمون',
-          labelEn: 'Scholars',
-          href: '/teachers',
-          icon: Users,
         },
         {
           labelAr: 'المساعدة',
@@ -125,7 +107,7 @@ export const BottomNav: React.FC = () => {
       ];
     }
 
-    // Default Public / Guest navigation
+    // Default Public / Guest navigation (Strictly for unauthenticated visitors)
     return [
       {
         labelAr: 'الرئيسية',
@@ -133,12 +115,6 @@ export const BottomNav: React.FC = () => {
         href: '/',
         icon: Home,
         exact: true,
-      },
-      {
-        labelAr: 'المعلمون',
-        labelEn: 'Scholars',
-        href: '/teachers',
-        icon: BookOpen,
       },
       {
         labelAr: 'الأسعار',
@@ -153,10 +129,10 @@ export const BottomNav: React.FC = () => {
         icon: HelpCircle,
       },
       {
-        labelAr: currentUser ? 'حسابي' : 'دخول',
-        labelEn: currentUser ? 'Profile' : 'Sign In',
-        href: currentUser ? '/profile' : '/login',
-        icon: currentUser ? User : LogIn,
+        labelAr: 'دخول',
+        labelEn: 'Sign In',
+        href: '/login',
+        icon: LogIn,
       },
     ];
   };

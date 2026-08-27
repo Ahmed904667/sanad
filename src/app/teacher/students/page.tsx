@@ -4,6 +4,7 @@ import React from 'react';
 import Link from 'next/link';
 import { useApp } from '@/context/AppContext';
 import { AvatarBadge } from '@/components/AvatarBadge';
+import { AuthGuard } from '@/components/AuthGuard';
 import { getQuranTrackTitle } from '@/data/mockData';
 import { 
   Users, 
@@ -18,7 +19,7 @@ import {
   Sparkles
 } from 'lucide-react';
 
-export default function TeacherStudentsPage() {
+function TeacherStudentsContent() {
   const { language, teacherProfile, currentUser, student, plans, userAccounts, lessons } = useApp();
   const isAr = language === 'ar';
 
@@ -122,14 +123,6 @@ export default function TeacherStudentsPage() {
               </p>
             </div>
           </div>
-
-          <Link
-            href="/student/plan-builder"
-            className="px-6 py-3.5 rounded-2xl gold-gradient-bg text-emerald-950 font-black text-xs shadow-lg hover:brightness-110 transition-all flex items-center gap-2 shrink-0 cursor-pointer"
-          >
-            <Target className="w-4 h-4 stroke-[2.5]" />
-            <span>{isAr ? 'تصميم خطة طالب جديد' : 'Build Custom Student Plan'}</span>
-          </Link>
         </div>
 
         {/* STUDENTS ROSTER CARDS */}
@@ -188,22 +181,13 @@ export default function TeacherStudentsPage() {
                     </div>
 
                     <div className="flex items-center gap-2 w-full sm:w-auto">
-                      {/* DIRECT LINK TO DEDICATED STUDENT PAGE */}
+              {/* DIRECT LINK TO DEDICATED STUDENT PAGE */}
                       <Link
                         href={`/teacher/students/${std.id}`}
                         className="flex-1 sm:flex-none px-5 py-3 rounded-2xl gold-gradient-bg text-emerald-950 font-black text-xs shadow-sm hover:brightness-110 transition-all flex items-center justify-center gap-2 cursor-pointer shrink-0"
                       >
                         <span>{isAr ? 'عرض ملف الطالب والحصص' : 'View Full Profile'}</span>
                         {isAr ? <ChevronLeft className="w-4 h-4 stroke-[2.5]" /> : <ChevronRight className="w-4 h-4 stroke-[2.5]" />}
-                      </Link>
-
-                      {/* EDIT PLAN BUTTON */}
-                      <Link
-                        href="/student/plan-builder"
-                        className="flex-1 sm:flex-none px-4 py-3 rounded-2xl border border-slate-200 hover:bg-slate-100 text-slate-700 font-extrabold text-xs transition-all flex items-center justify-center gap-1.5 shrink-0"
-                      >
-                        <Edit3 className="w-3.5 h-3.5 text-emerald-700" />
-                        <span>{isAr ? 'تعديل الخطة' : 'Edit Plan'}</span>
                       </Link>
                     </div>
                   </div>
@@ -225,5 +209,13 @@ export default function TeacherStudentsPage() {
 
       </div>
     </div>
+  );
+}
+
+export default function TeacherStudentsPage() {
+  return (
+    <AuthGuard allowedRoles={['TEACHER']}>
+      <TeacherStudentsContent />
+    </AuthGuard>
   );
 }

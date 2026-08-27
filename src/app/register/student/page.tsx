@@ -7,6 +7,7 @@ import { useApp } from '@/context/AppContext';
 import { AvatarBadge } from '@/components/AvatarBadge';
 import { TeacherDatePicker } from '@/components/TeacherDatePicker';
 import { TeacherReviewsModal } from '@/components/TeacherReviewsModal';
+import { formatTime12h } from '@/utils/timeFormat';
 import { SubscriptionPlan, Teacher, Lesson, LearningGoalTrack, StudentQuranGoal, Review } from '@/types';
 import { SUBSCRIPTION_GOALS } from '@/data/mockData';
 import { 
@@ -84,18 +85,20 @@ export default function StudentRegisterPage() {
   const [step, setStep] = useState<1 | 2 | 3 | 4 | 5 | 6 | 7>(1);
 
   // STEP 1: Account Information
-  const [name, setName] = useState(currentUser?.nameAr || student.nameAr || '');
-  const [email, setEmail] = useState(currentUser?.email || student.email || '');
-  const [phone, setPhone] = useState(student.phone || '');
-  const [gender, setGender] = useState<'MALE' | 'FEMALE'>(student.gender || 'MALE');
-  const [password, setPassword] = useState('123456');
+  const [name, setName] = useState(currentUser?.role === 'STUDENT' ? (currentUser?.nameAr || student.nameAr || '') : '');
+  const [email, setEmail] = useState(currentUser?.role === 'STUDENT' ? (currentUser?.email || student.email || '') : '');
+  const [phone, setPhone] = useState(currentUser?.role === 'STUDENT' ? (student.phone || '') : '');
+  const [birthDate, setBirthDate] = useState(currentUser?.role === 'STUDENT' ? (student.birthDate || '') : '');
+  const [gender, setGender] = useState<'MALE' | 'FEMALE'>(currentUser?.role === 'STUDENT' ? (student.gender || 'MALE') : 'MALE');
+  const [password, setPassword] = useState('');
 
   // Auto pre-fill if logged in student is re-registering or updating receipt
   useEffect(() => {
-    if (currentUser?.role === 'STUDENT' || student.email) {
+    if (currentUser && currentUser.role === 'STUDENT') {
       if (student.nameAr) setName(student.nameAr);
       if (student.email) setEmail(student.email);
       if (student.phone) setPhone(student.phone);
+      if (student.birthDate) setBirthDate(student.birthDate);
       if (student.gender) setGender(student.gender);
       if (student.assignedTeacherId) setSelectedTeacherId(student.assignedTeacherId);
       if (student.quranGoal?.agreedWeeklyDaysAr) setSelectedDays(student.quranGoal.agreedWeeklyDaysAr);
@@ -123,8 +126,11 @@ export default function StudentRegisterPage() {
   const [surahSearchQuery, setSurahSearchQuery] = useState<string>('');
   const [selectedJuzNumbers, setSelectedJuzNumbers] = useState<number[]>([30]); // Array of Juz numbers, default [30] (Juz 'Amma)
 
-  // STEP 4: Teacher Selection (Filtered by Gender)
-  const filteredTeachers = teachers.filter(t => t.gender === gender);
+  // STEP 4: Teacher Selection (Filtered by Gender & Admin Approval)
+  const approvedTeachers = teachers.filter(t => t.approvalStatus === 'APPROVED');
+  const filteredTeachers = approvedTeachers.filter(t => t.gender === gender).length > 0
+    ? approvedTeachers.filter(t => t.gender === gender)
+    : (approvedTeachers.length > 0 ? approvedTeachers : teachers);
   const [selectedTeacherId, setSelectedTeacherId] = useState<string>(filteredTeachers[0]?.id || teachers[0]?.id);
   const [modalReviewsTeacher, setModalReviewsTeacher] = useState<Teacher | null>(null);
 
@@ -715,8 +721,19 @@ export default function StudentRegisterPage() {
         setStepError(isAr ? 'هذا البريد الإلكتروني مسجل بالفعل! يرجى تسجيل الدخول أو استخدام بريد آخر.' : 'This email is already registered! Please log in or use another email.');
         return false;
       }
-      if (!phone.trim() || phone.trim().length < 8) {
+      if (!phone.trim() || phone.replace(/[\s\-\(\)\+]/g, '').length < 8) {
         setStepError(isAr ? 'يرجى كتابة رقم الجوال بشكل صحيح (8 أرقام على الأقل).' : 'Please enter a valid phone number (at least 8 digits).');
+        return false;
+      }
+      // Check duplicate phone in userAccounts
+      const phoneCleanStr = phone.replace(/[\s\-\(\)\+]/g, '');
+      const existingPhoneAcc = userAccounts.find(acc => acc.phone && acc.phone.replace(/[\s\-\(\)\+]/g, '') === phoneCleanStr && acc.id !== currentUser?.id);
+      if (existingPhoneAcc) {
+        setStepError(isAr ? 'رقم الجوال هذا مسجل بالفعل! يرجى استخدام رقم آخر أو تسجيل الدخول.' : 'This phone number is already registered! Please log in or use another number.');
+        return false;
+      }
+      if (!birthDate) {
+        setStepError(isAr ? 'يرجى تحديد تاريخ الميلاد بشكل صحيح.' : 'Please select your date of birth.');
         return false;
       }
       if (!currentUser?.id && (!password || password.length < 6)) {
@@ -848,7 +865,11 @@ export default function StudentRegisterPage() {
       if (!emailClean || !emailRegex.test(emailClean)) return false;
       const existingAcc = userAccounts.find(acc => acc.email.toLowerCase() === emailClean && acc.id !== currentUser?.id);
       if (existingAcc) return false;
-      if (!phone.trim() || phone.trim().length < 8) return false;
+      const phoneCleanStr = phone.replace(/[\s\-\(\)\+]/g, '');
+      if (!phone.trim() || phoneCleanStr.length < 8) return false;
+      const existingPhoneAcc = userAccounts.find(acc => acc.phone && acc.phone.replace(/[\s\-\(\)\+]/g, '') === phoneCleanStr && acc.id !== currentUser?.id);
+      if (existingPhoneAcc) return false;
+      if (!birthDate) return false;
       if (!currentUser?.id && (!password || password.length < 6)) return false;
       return true;
     }
@@ -902,6 +923,8 @@ export default function StudentRegisterPage() {
     if (validateCurrentStep(step)) {
       setStep(nextStep);
       window.scrollTo({ top: 0, behavior: 'smooth' });
+    } else {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
     }
   };
 
@@ -909,6 +932,8 @@ export default function StudentRegisterPage() {
     e.preventDefault();
     if (validateCurrentStep(1)) {
       setStep(2);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    } else {
       window.scrollTo({ top: 0, behavior: 'smooth' });
     }
   };
@@ -1012,6 +1037,7 @@ export default function StudentRegisterPage() {
       quranGoal: qGoal,
       receiptFile: receiptFile ? receiptFile.name : (isFreePlan ? undefined : 'إيصال_تحويل_مصرف_الراجحي.png'),
       bankRef: bankRef || (isFreePlan ? undefined : 'REF-' + Math.floor(100000 + Math.random() * 900000)),
+      birthDate,
       initialLessons: newLessons
     });
 
@@ -1131,6 +1157,22 @@ export default function StudentRegisterPage() {
 
               <div className="space-y-1">
                 <label className="block text-xs font-bold text-slate-700">
+                  {isAr ? 'تاريخ الميلاد:' : 'Date of Birth:'}
+                </label>
+                <div className="relative">
+                  <input
+                    type="date"
+                    required
+                    value={birthDate}
+                    onChange={(e) => { setBirthDate(e.target.value); setStepError(null); }}
+                    className="w-full pl-3 pr-10 py-3 rounded-2xl border border-slate-300 text-xs font-bold text-slate-900 bg-slate-50 focus:bg-white"
+                  />
+                  <Calendar className="w-4 h-4 text-slate-400 absolute right-3.5 top-3.5 pointer-events-none" />
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <label className="block text-xs font-bold text-slate-700">
                   {isAr ? 'كلمة المرور:' : 'Password:'}
                 </label>
                 <div className="relative">
@@ -1138,7 +1180,7 @@ export default function StudentRegisterPage() {
                     type="password"
                     required
                     value={password}
-                    onChange={(e) => setPassword(e.target.value)}
+                    onChange={(e) => { setPassword(e.target.value); setStepError(null); }}
                     placeholder="••••••••"
                     className="w-full pl-3 pr-10 py-3 rounded-2xl border border-slate-300 text-xs font-bold text-slate-900 bg-slate-50 focus:bg-white"
                   />
@@ -1149,7 +1191,7 @@ export default function StudentRegisterPage() {
 
             <div className="space-y-1">
               <label className="block text-xs font-bold text-slate-700">
-                {isAr ? 'الجنس (لتخصيص المقرئين/المقرئات):' : 'Gender:'}
+                {isAr ? 'الجنس:' : 'Gender:'}
               </label>
               <div className="grid grid-cols-2 gap-3">
                 <button
@@ -1161,7 +1203,7 @@ export default function StudentRegisterPage() {
                       : 'border-slate-200 text-slate-600 hover:bg-slate-50'
                   }`}
                 >
-                  <span>{isAr ? 'طالب (معلمون رجال)' : 'Male (Male Scholars)'}</span>
+                  <span>{isAr ? 'ذكر' : 'Male (Male Scholars)'}</span>
                 </button>
                 <button
                   type="button"
@@ -1172,19 +1214,25 @@ export default function StudentRegisterPage() {
                       : 'border-slate-200 text-slate-600 hover:bg-slate-50'
                   }`}
                 >
-                  <span>{isAr ? 'طالبة (معلمات نساء)' : 'Female (Female Scholars)'}</span>
+                  <span>{isAr ? 'انثى' : 'Female (Female Scholars)'}</span>
                 </button>
               </div>
             </div>
 
-            <div className="pt-3 flex justify-end">
+            <div className="pt-3 flex flex-col items-end gap-2">
+              {!isCurrentStepValid(1) && (
+                <p className="text-[11px] font-bold text-amber-800 bg-amber-50 border border-amber-200 px-3 py-2 rounded-xl w-full text-center">
+                  {isAr 
+                    ? '💡 يرجى تعبئة كافة الحقول المطلوبة (الاسم، البريد الإلكتروني، رقم الجوال، تاريخ الميلاد، وكلمة المرور 6 خانات).' 
+                    : '💡 Please complete all required fields (Name, Email, Phone, Date of Birth, and Password min 6 chars).'}
+                </p>
+              )}
               <button
                 type="submit"
-                disabled={!isCurrentStepValid(1)}
-                className={`w-full sm:w-auto px-8 py-3.5 rounded-2xl font-black text-xs shadow-md flex items-center justify-center gap-2 transition-all ${
+                className={`w-full sm:w-auto px-8 py-3.5 rounded-2xl font-black text-xs shadow-md flex items-center justify-center gap-2 transition-all cursor-pointer ${
                   isCurrentStepValid(1)
-                    ? 'emerald-gradient-bg text-white hover:shadow-lg cursor-pointer'
-                    : 'bg-slate-200 text-slate-400 border border-slate-300 shadow-none cursor-not-allowed pointer-events-none'
+                    ? 'emerald-gradient-bg text-white hover:shadow-lg'
+                    : 'bg-emerald-800/80 hover:bg-emerald-800 text-white shadow-sm'
                 }`}
               >
                 <span>{isAr ? 'التالي: اختيار الخطة وطريقة الدفع' : 'Next: Select Plan'}</span>
@@ -1480,7 +1528,7 @@ export default function StudentRegisterPage() {
                 }`}
               >
                 <BookOpen className="w-4 h-4" />
-                <span>{isAr ? 'تحديد حسب السور والآيات (سورة أو عدة سور)' : 'By Surah & Ayahs (Single/Multi)'}</span>
+                <span>{isAr ? 'تحديد حسب السور والآيات' : 'By Surah & Ayahs'}</span>
               </button>
               <button
                 type="button"
@@ -1492,7 +1540,7 @@ export default function StudentRegisterPage() {
                 }`}
               >
                 <Layers className="w-4 h-4" />
-                <span>{isAr ? 'تحديد حسب الأجزاء (جزء أو عدة أجزاء)' : 'By Juz (Single/Multi)'}</span>
+                <span>{isAr ? 'تحديد حسب الأجزاء' : 'By Juz'}</span>
               </button>
             </div>
 
@@ -2027,61 +2075,58 @@ export default function StudentRegisterPage() {
                 ))}
               </div>
 
-              {!isTargetValid && (
-                <div className="bg-amber-950/80 border border-amber-500/50 rounded-2xl p-3.5 flex items-center gap-3 text-amber-200 text-xs font-bold">
-                  <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0" />
-                  <div>
-                    {isAr
-                      ? `تنبيه: لتأكيد الخطة، يجب اختيار ما لا يقل عن ${minRequiredPages} صفحات (المحدد حالياً: ${currentSelectedPagesCount} صفحة، متبقي ${minRequiredPages - currentSelectedPagesCount} صفحة).`
-                      : `Warning: To confirm the plan, you must select at least ${minRequiredPages} pages (currently: ${currentSelectedPagesCount}, missing ${minRequiredPages - currentSelectedPagesCount} pages).`}
-                  </div>
+              <div className="flex flex-col gap-2 pt-2">
+                {!isCurrentStepValid(4) && (
+                  <p className="text-[11px] font-bold text-amber-800 bg-amber-50 border border-amber-200 px-3 py-2 rounded-xl text-center">
+                    {isAr 
+                      ? `💡 مقرر الحفظ يحتاج استكمال الحد الأدنى (${currentSelectedPagesCount} من ${minRequiredPages} صفحات).` 
+                      : `💡 Target does not meet minimum ${minRequiredPages} pages.`}
+                  </p>
+                )}
+                <div className="flex items-center justify-between gap-3">
+                  <button
+                    type="button"
+                    onClick={() => { setStepError(null); setStep(3); }}
+                    className="px-5 py-3 rounded-2xl border border-slate-200 text-slate-700 font-bold text-xs cursor-pointer hover:bg-slate-100 transition-colors"
+                  >
+                    {isAr ? 'السابق' : 'Back'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => goToNextStep(5)}
+                    className={`px-6 py-3.5 rounded-2xl font-black text-xs shadow-md flex items-center gap-2 transition-all cursor-pointer ${
+                      isCurrentStepValid(4)
+                        ? 'emerald-gradient-bg text-white hover:shadow-lg'
+                        : 'bg-emerald-800/80 hover:bg-emerald-800 text-white shadow-sm'
+                    }`}
+                  >
+                    <span>{isAr ? 'التالي: اختيار المعلم المجاز' : 'Next: Choose Scholar'}</span>
+                    <ChevronLeft className="w-4 h-4" />
+                  </button>
                 </div>
-              )}
-            </div>
-
-            <div className="flex items-center justify-between gap-3 pt-2">
-              <button
-                type="button"
-                onClick={() => { setStepError(null); setStep(3); }}
-                className="px-5 py-3 rounded-2xl border border-slate-200 text-slate-700 font-bold text-xs cursor-pointer hover:bg-slate-100 transition-colors"
-              >
-                {isAr ? 'السابق' : 'Back'}
-              </button>
-              <button
-                type="button"
-                disabled={!isCurrentStepValid(4)}
-                onClick={() => goToNextStep(5)}
-                className={`px-6 py-3.5 rounded-2xl font-black text-xs shadow-md flex items-center gap-2 transition-all ${
-                  isCurrentStepValid(4)
-                    ? 'emerald-gradient-bg text-white cursor-pointer hover:shadow-lg'
-                    : 'bg-slate-200 text-slate-400 border border-slate-300 shadow-none cursor-not-allowed pointer-events-none'
-                }`}
-                title={!isTargetValid ? (isAr ? `يرجى تحديد ${minRequiredPages} صفحات على الأقل للمتابعة` : `Please select at least ${minRequiredPages} pages to continue`) : undefined}
-              >
-                <span>
-                  {isTargetValid 
-                    ? (isAr ? 'التالي: اختيار المعلم المجاز' : 'Next: Choose Scholar')
-                    : (isAr ? `يلزم تحديد ${minRequiredPages} صفحات على الأقل للمتابعة` : `Min ${minRequiredPages} pages required`)}
-                </span>
-                <ChevronLeft className="w-4 h-4" />
-              </button>
+              </div>
             </div>
           </div>
         )}
 
-        {/* STEP 5: CHOOSE TEACHER WITH AVAILABLE TIMES */}
+        {/* STEP 5: SELECT CERTIFIED SCHOLAR */}
         {step === 5 && (
           <div className="space-y-6 animate-fade-in">
             <div className="text-center space-y-1">
               <h2 className="text-2xl font-black text-emerald-950">
-                {isAr ? 'اختر المعلم المجاز بالسند' : 'Select Certified Scholar'}
+                {isAr 
+                  ? `اختر المعلم المناسب (${gender === 'MALE' ? 'المقرئين الرجال' : 'المقرئات النساء'})` 
+                  : `Select Certified Scholar (${gender === 'MALE' ? 'Male Scholars' : 'Female Scholars'})`}
               </h2>
               <p className="text-xs text-slate-500">
-                {isAr ? 'يعرض النظام ساعات العمل والأوقات المتاحة لكل معلم بدقة' : 'Showing exact working hours and available slots'}
+                {isAr 
+                  ? 'تم تصفية المعلمين تلقائياً حسب جنس الطالب لتسهيل الاختيار وضمان الراحة والتفرغ' 
+                  : 'Filtered automatically by student gender preference'}
               </p>
             </div>
 
-            <div className="space-y-4">
+            {/* Scholars List */}
+            <div className="space-y-3">
               {filteredTeachers.map((teacher) => {
                 const isSelected = selectedTeacherId === teacher.id;
                 const slots = teacher.availableSlots || ['12:00', '14:00', '16:00', '18:00'];
@@ -2091,16 +2136,16 @@ export default function StudentRegisterPage() {
                   <div
                     key={teacher.id}
                     onClick={() => setSelectedTeacherId(teacher.id)}
-                    className={`p-5 rounded-3xl border-2 transition-all cursor-pointer space-y-3 ${
+                    className={`p-4 rounded-3xl border-2 transition-all cursor-pointer space-y-3 relative ${
                       isSelected
-                        ? 'border-emerald-600 bg-emerald-50/70 shadow-md ring-2 ring-emerald-400'
+                        ? 'border-emerald-600 bg-emerald-50/80 shadow-md ring-2 ring-emerald-400'
                         : 'border-slate-200 bg-white hover:border-emerald-300'
                     }`}
                   >
-                    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                    <div className="flex items-center justify-between flex-wrap gap-3">
                       <div className="flex items-center gap-3">
                         <AvatarBadge nameAr={teacher.nameAr} nameEn={teacher.nameEn} size="lg" />
-                        <div className="space-y-1 text-xs">
+                        <div className="space-y-0.5">
                           <div className="flex items-center gap-2">
                             <h3 className="font-black text-sm text-slate-900">
                               {isAr ? teacher.nameAr : teacher.nameEn}
@@ -2111,12 +2156,12 @@ export default function StudentRegisterPage() {
                                 e.stopPropagation();
                                 setModalReviewsTeacher(teacher);
                               }}
-                              className="bg-amber-100 hover:bg-amber-200 text-amber-950 font-black px-2.5 py-1 rounded-full text-[10px] flex items-center gap-1 cursor-pointer transition-colors border border-amber-300 shadow-2xs"
-                              title={isAr ? 'عرض تقييمات وآراء الطلاب' : 'View Student Reviews'}
+                              className="flex items-center gap-1 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200 px-2 py-0.5 rounded-full transition-colors cursor-pointer"
+                              title={isAr ? 'عرض تقييمات المعلم' : 'View Scholar Reviews'}
                             >
-                              <Star className="w-3 h-3 fill-amber-400 text-amber-500" />
-                              <span>{teacher.rating.toFixed(1)}</span>
-                              <span className="text-[9px] text-amber-900 underline font-bold mr-0.5">
+                              <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-500" />
+                              <span className="text-[10px] font-black">{teacher.rating.toFixed(1)}</span>
+                              <span className="text-[9px] text-amber-800 font-bold">
                                 ({reviews.filter((r: Review) => r.teacherId === teacher.id).length || teacher.reviewsCount} {isAr ? 'تقييمات' : 'reviews'})
                               </span>
                             </button>
@@ -2162,27 +2207,33 @@ export default function StudentRegisterPage() {
               })}
             </div>
 
-            <div className="flex items-center justify-between gap-3 pt-2">
-              <button
-                type="button"
-                onClick={() => { setStepError(null); setStep(4); }}
-                className="px-5 py-3 rounded-2xl border border-slate-200 text-slate-700 font-bold text-xs cursor-pointer"
-              >
-                {isAr ? 'السابق' : 'Back'}
-              </button>
-              <button
-                type="button"
-                disabled={!isCurrentStepValid(5)}
-                onClick={() => goToNextStep(6)}
-                className={`px-6 py-3.5 rounded-2xl font-black text-xs shadow-md flex items-center gap-2 transition-all ${
-                  isCurrentStepValid(5)
-                    ? 'emerald-gradient-bg text-white cursor-pointer hover:shadow-lg'
-                    : 'bg-slate-200 text-slate-400 border border-slate-300 shadow-none cursor-not-allowed pointer-events-none'
-                }`}
-              >
-                <span>{isAr ? 'التالي: تحديد مواعيد الحصص' : 'Next: Classes Schedule'}</span>
-                <ChevronLeft className="w-4 h-4" />
-              </button>
+            <div className="flex flex-col gap-2 pt-2">
+              {!isCurrentStepValid(5) && (
+                <p className="text-[11px] font-bold text-amber-800 bg-amber-50 border border-amber-200 px-3 py-2 rounded-xl text-center">
+                  {isAr ? '💡 يرجى اختيار معلم مجاز للمتابعة.' : '💡 Please select a scholar to proceed.'}
+                </p>
+              )}
+              <div className="flex items-center justify-between gap-3">
+                <button
+                  type="button"
+                  onClick={() => { setStepError(null); setStep(4); }}
+                  className="px-5 py-3 rounded-2xl border border-slate-200 text-slate-700 font-bold text-xs cursor-pointer"
+                >
+                  {isAr ? 'السابق' : 'Back'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => goToNextStep(6)}
+                  className={`px-6 py-3.5 rounded-2xl font-black text-xs shadow-md flex items-center gap-2 transition-all cursor-pointer ${
+                    isCurrentStepValid(5)
+                      ? 'emerald-gradient-bg text-white hover:shadow-lg'
+                      : 'bg-emerald-800/80 hover:bg-emerald-800 text-white shadow-sm'
+                  }`}
+                >
+                  <span>{isAr ? 'التالي: تحديد مواعيد الحصص' : 'Next: Classes Schedule'}</span>
+                  <ChevronLeft className="w-4 h-4" />
+                </button>
+              </div>
             </div>
           </div>
         )}
@@ -2212,8 +2263,8 @@ export default function StudentRegisterPage() {
                 <Clock className="w-4 h-4 text-emerald-700 shrink-0" />
                 <span className="font-bold text-emerald-950">
                   {isAr 
-                    ? `ساعات المعلم المتاحة (${selectedTeacher.nameAr}): من ${selectedTeacher.workingHoursStart || '12:00'} حتى ${selectedTeacher.workingHoursEnd || '18:00'}`
-                    : `Available Scholar Hours (${selectedTeacher.nameEn}): ${selectedTeacher.workingHoursStart || '12:00'} - ${selectedTeacher.workingHoursEnd || '18:00'}`}
+                    ? `ساعات المعلم المتاحة (${selectedTeacher.nameAr}): من ${formatTime12h(selectedTeacher.workingHoursStart || '12:00', isAr)} حتى ${formatTime12h(selectedTeacher.workingHoursEnd || '18:00', isAr)}`
+                    : `Available Scholar Hours (${selectedTeacher.nameEn}): ${formatTime12h(selectedTeacher.workingHoursStart || '12:00', isAr)} - ${formatTime12h(selectedTeacher.workingHoursEnd || '18:00', isAr)}`}
                 </span>
               </div>
               {selectedTeacher.workingDaysAr && selectedTeacher.workingDaysAr.length > 0 && (
@@ -2290,7 +2341,7 @@ export default function StudentRegisterPage() {
                             </button>
                           )}
                           <span className="text-emerald-800 font-mono bg-emerald-100/90 px-2.5 py-0.5 rounded-md font-black">
-                            {selectedSlotsForDay.join(' • ')}
+                            {selectedSlotsForDay.map(s => formatTime12h(s, isAr)).join(' • ')}
                           </span>
                         </div>
                       </div>
@@ -2310,7 +2361,7 @@ export default function StudentRegisterPage() {
                                 className="py-2.5 px-2 rounded-xl border border-slate-200 bg-slate-100/90 text-slate-400 text-xs font-bold text-center opacity-40 cursor-not-allowed line-through select-none"
                                 title={isAr ? 'هذا الوقت محجوز مع المعلم' : 'Slot Booked'}
                               >
-                                <div>{slot}</div>
+                                <div>{formatTime12h(slot, isAr)}</div>
                                 <span className="text-[9px] block font-extrabold text-rose-700">{isAr ? 'محجوز' : 'Booked'}</span>
                               </button>
                             );
@@ -2327,7 +2378,7 @@ export default function StudentRegisterPage() {
                                   : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-100'
                               }`}
                             >
-                              <div>{slot}</div>
+                              <div>{formatTime12h(slot, isAr)}</div>
                               <span className={`text-[9px] block font-bold ${isSelectedSlot ? 'text-emerald-950' : 'text-emerald-700'}`}>
                                 {isSelectedSlot ? '✓ متاح' : 'متاح'}
                               </span>
@@ -2341,27 +2392,35 @@ export default function StudentRegisterPage() {
               </div>
             </div>
 
-            <div className="flex items-center justify-between gap-3 pt-2">
-              <button
-                type="button"
-                onClick={() => { setStepError(null); setStep(5); }}
-                className="px-5 py-3 rounded-2xl border border-slate-200 text-slate-700 font-bold text-xs cursor-pointer"
-              >
-                {isAr ? 'السابق' : 'Back'}
-              </button>
-              <button
-                type="button"
-                disabled={!isCurrentStepValid(6)}
-                onClick={() => goToNextStep(7)}
-                className={`px-6 py-3.5 rounded-2xl font-black text-xs shadow-md flex items-center gap-2 transition-all ${
-                  isCurrentStepValid(6)
-                    ? 'emerald-gradient-bg text-white hover:shadow-lg cursor-pointer'
-                    : 'bg-slate-200 text-slate-400 border border-slate-300 shadow-none cursor-not-allowed pointer-events-none'
-                }`}
-              >
-                <span>{isAr ? 'التالي: موعد الجلسة الترحيبية' : 'Next: Welcoming Class'}</span>
-                <ChevronLeft className="w-4 h-4" />
-              </button>
+            <div className="flex flex-col gap-2 pt-2">
+              {!isCurrentStepValid(6) && (
+                <p className="text-[11px] font-bold text-amber-800 bg-amber-50 border border-amber-200 px-3 py-2 rounded-xl text-center">
+                  {isAr 
+                    ? `💡 يرجى تحديد ${allowedWeeklySlots} أيام أسبوعياً بالكامل واختيار أوقات غير محجوزة.` 
+                    : `💡 Please select exactly ${allowedWeeklySlots} weekly days.`}
+                </p>
+              )}
+              <div className="flex items-center justify-between gap-3">
+                <button
+                  type="button"
+                  onClick={() => { setStepError(null); setStep(5); }}
+                  className="px-5 py-3 rounded-2xl border border-slate-200 text-slate-700 font-bold text-xs cursor-pointer"
+                >
+                  {isAr ? 'السابق' : 'Back'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => goToNextStep(7)}
+                  className={`px-6 py-3.5 rounded-2xl font-black text-xs shadow-md flex items-center gap-2 transition-all cursor-pointer ${
+                    isCurrentStepValid(6)
+                      ? 'emerald-gradient-bg text-white hover:shadow-lg'
+                      : 'bg-emerald-800/80 hover:bg-emerald-800 text-white shadow-sm'
+                  }`}
+                >
+                  <span>{isAr ? 'التالي: موعد الجلسة الترحيبية' : 'Next: Welcoming Class'}</span>
+                  <ChevronLeft className="w-4 h-4" />
+                </button>
+              </div>
             </div>
           </div>
         )}
@@ -2502,31 +2561,39 @@ export default function StudentRegisterPage() {
               </div>
             </div>
 
-            <div className="flex items-center justify-between gap-3 pt-2">
-              <button
-                type="button"
-                onClick={() => { setStepError(null); setStep(6); }}
-                className="px-5 py-3 rounded-2xl border border-slate-200 text-slate-700 font-bold text-xs cursor-pointer"
-              >
-                {isAr ? 'السابق' : 'Back'}
-              </button>
-              <button
-                type="button"
-                disabled={!isCurrentStepValid(7)}
-                onClick={handleFinishRegistration}
-                className={`px-6 py-3.5 rounded-2xl font-black text-xs shadow-md flex items-center gap-2 transition-all ${
-                  isCurrentStepValid(7)
-                    ? 'gold-gradient-bg text-emerald-950 hover:brightness-110 cursor-pointer'
-                    : 'bg-slate-200 text-slate-400 border border-slate-300 shadow-none cursor-not-allowed pointer-events-none'
-                }`}
-              >
-                <CheckCircle2 className="w-4 h-4 stroke-[2.5]" />
-                <span>
-                  {isFreePlan 
-                    ? (isAr ? 'تأكيد الحساب المجاني والدخول للوحة التحكم' : 'Activate Free Account & Launch') 
-                    : (isAr ? 'إرسال طلب الاشتراك للإدارة والدخول' : 'Submit to Admin & Launch')}
-                </span>
-              </button>
+            <div className="flex flex-col gap-2 pt-2">
+              {!isCurrentStepValid(7) && (
+                <p className="text-[11px] font-bold text-amber-800 bg-amber-50 border border-amber-200 px-3 py-2 rounded-xl text-center">
+                  {isAr 
+                    ? '💡 يرجى اختيار موعد متاح للجلسة التمهيدية يكون قبل موعد أول حصة نظامية.' 
+                    : '💡 Please select a valid orientation session time before your first class.'}
+                </p>
+              )}
+              <div className="flex items-center justify-between gap-3">
+                <button
+                  type="button"
+                  onClick={() => { setStepError(null); setStep(6); }}
+                  className="px-5 py-3 rounded-2xl border border-slate-200 text-slate-700 font-bold text-xs cursor-pointer"
+                >
+                  {isAr ? 'السابق' : 'Back'}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleFinishRegistration}
+                  className={`px-6 py-3.5 rounded-2xl font-black text-xs shadow-md flex items-center gap-2 transition-all cursor-pointer ${
+                    isCurrentStepValid(7)
+                      ? 'gold-gradient-bg text-emerald-950 hover:brightness-110'
+                      : 'bg-emerald-800/80 hover:bg-emerald-800 text-white shadow-sm'
+                  }`}
+                >
+                  <CheckCircle2 className="w-4 h-4 stroke-[2.5]" />
+                  <span>
+                    {isFreePlan 
+                      ? (isAr ? 'تأكيد الحساب المجاني والدخول للوحة التحكم' : 'Activate Free Account & Launch') 
+                      : (isAr ? 'إرسال طلب الاشتراك للإدارة والدخول' : 'Submit to Admin & Launch')}
+                  </span>
+                </button>
+              </div>
             </div>
           </div>
         )}

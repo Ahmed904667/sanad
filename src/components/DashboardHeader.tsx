@@ -133,16 +133,6 @@ export const DashboardHeader: React.FC = () => {
                   <CreditCard className="w-3.5 h-3.5" />
                   <span>{isAr ? 'إدارة الاشتراكات' : 'Subscriptions'}</span>
                 </Link>
-
-                <Link
-                  href="/teachers"
-                  className={`hover:text-amber-400 transition-colors py-1 flex items-center gap-1 ${
-                    pathname === '/teachers' ? 'text-amber-400 font-extrabold border-b-2 border-amber-400' : ''
-                  }`}
-                >
-                  <Users className="w-3.5 h-3.5" />
-                  <span>{isAr ? 'دليل المعلمين' : 'Scholars'}</span>
-                </Link>
               </>
             )}
 
@@ -166,16 +156,6 @@ export const DashboardHeader: React.FC = () => {
                 >
                   <Users className="w-3.5 h-3.5" />
                   <span>{isAr ? 'قائمة الطلاب' : 'My Students'}</span>
-                </Link>
-
-                <Link
-                  href="/student/plan-builder"
-                  className={`hover:text-amber-400 transition-colors py-1 flex items-center gap-1 ${
-                    pathname === '/student/plan-builder' ? 'text-amber-400 font-extrabold border-b-2 border-amber-400' : ''
-                  }`}
-                >
-                  <Target className="w-3.5 h-3.5" />
-                  <span>{isAr ? 'فهرس وتصميم السور' : 'Quran Plan Builder'}</span>
                 </Link>
               </>
             )}
@@ -216,13 +196,13 @@ export const DashboardHeader: React.FC = () => {
 
           {/* User Profile Badge & Logout */}
           <div className="flex items-center gap-3 pl-2 border-l border-slate-800">
-            {!isHydrated ? (
+            {!isHydrated || !currentUser ? (
               <div className="w-8 h-8 rounded-full bg-slate-800 animate-pulse border border-slate-700"></div>
             ) : (
               <Link href="/profile" title="View Profile">
                 <AvatarBadge
-                  nameAr={currentUser?.nameAr || (role === 'STUDENT' ? student.nameAr : role === 'TEACHER' ? teacherProfile.nameAr : 'مدير المنصة')}
-                  nameEn={currentUser?.nameEn || (role === 'STUDENT' ? student.nameEn : role === 'TEACHER' ? teacherProfile.nameEn : 'Admin')}
+                  nameAr={currentUser.nameAr || (currentUser.role === 'STUDENT' ? student.nameAr : currentUser.role === 'TEACHER' ? teacherProfile.nameAr : 'مدير المنصة')}
+                  nameEn={currentUser.nameEn || (currentUser.role === 'STUDENT' ? student.nameEn : currentUser.role === 'TEACHER' ? teacherProfile.nameEn : 'Admin')}
                   size="sm"
                 />
               </Link>

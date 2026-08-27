@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { useApp } from '@/context/AppContext';
 import { AvatarBadge } from '@/components/AvatarBadge';
+import { AuthGuard } from '@/components/AuthGuard';
 import { 
   Video, 
   Calendar as CalendarIcon, 
@@ -34,7 +35,7 @@ import {
 import { getDayNameArFromDate } from '@/data/quranData';
 import { TeacherDatePicker } from '@/components/TeacherDatePicker';
 
-export default function ClassDetailPage() {
+function ClassDetailContent() {
   const params = useParams();
   const router = useRouter();
   const lessonId = params.id as string;
@@ -649,5 +650,13 @@ export default function ClassDetailPage() {
 
       </div>
     </div>
+  );
+}
+
+export default function ClassDetailPage() {
+  return (
+    <AuthGuard>
+      <ClassDetailContent />
+    </AuthGuard>
   );
 }

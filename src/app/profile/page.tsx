@@ -1,10 +1,11 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useApp } from '@/context/AppContext';
 import { AvatarBadge } from '@/components/AvatarBadge';
 import { TeacherAvailabilityModal } from '@/components/TeacherAvailabilityModal';
+import { AuthGuard } from '@/components/AuthGuard';
 import { 
   User, 
   Mail, 
@@ -21,7 +22,7 @@ import {
   Clock
 } from 'lucide-react';
 
-export default function ProfilePage() {
+function ProfileContent() {
   const { 
     language, 
     role, 
@@ -30,24 +31,39 @@ export default function ProfilePage() {
     teacherProfile, 
     teachers, 
     plans, 
-    logout 
+    logout,
+    updateUserProfile
   } = useApp();
   const isAr = language === 'ar';
 
-  const [name, setName] = useState(role === 'STUDENT' ? student.nameAr : teacherProfile.nameAr);
-  const [email, setEmail] = useState(role === 'STUDENT' ? student.email : teacherProfile.email);
-  const [phone, setPhone] = useState(student.phone || '+966501234567');
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
+  const [phone, setPhone] = useState('');
+  const [ijazah, setIjazah] = useState('');
   const [savedSuccess, setSavedSuccess] = useState(false);
   const [isAvailabilityModalOpen, setIsAvailabilityModalOpen] = useState(false);
+
+  useEffect(() => {
+    if (currentUser) {
+      setName(currentUser.nameAr || currentUser.nameEn || (role === 'STUDENT' ? student.nameAr : teacherProfile.nameAr));
+      setEmail(currentUser.email || (role === 'STUDENT' ? student.email : teacherProfile.email));
+      setPhone(role === 'STUDENT' ? (student.phone || '') : (teacherProfile.phone || ''));
+      setIjazah(teacherProfile.ijazahChainAr || '');
+    }
+  }, [currentUser, role, student, teacherProfile]);
 
   const activePlan = plans.find(p => p.id === (student.activePlanId || student.pendingPlanId)) || plans[1];
   const assignedTeacher = teachers.find(t => t.id === student.assignedTeacherId) || teachers[0];
 
   const handleSaveProfile = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!name.trim() || !email.trim()) return;
+    updateUserProfile(name, email, phone, ijazah);
     setSavedSuccess(true);
     setTimeout(() => setSavedSuccess(false), 3000);
   };
+
+  const displayName = currentUser?.nameAr || currentUser?.nameEn || name || 'المستخدم';
 
   return (
     <div className="py-12 bg-slate-50/70 min-h-screen">
@@ -57,33 +73,33 @@ export default function ProfilePage() {
         <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200 shadow-sm flex flex-col md:flex-row items-center justify-between gap-6">
           <div className="flex items-center gap-5 text-center md:text-start">
             <AvatarBadge
-              nameAr={role === 'STUDENT' ? student.nameAr : teacherProfile.nameAr}
-              nameEn={role === 'STUDENT' ? student.nameEn : teacherProfile.nameEn}
+              nameAr={displayName}
+              nameEn={currentUser?.nameEn || displayName}
               size="xl"
             />
             <div className="space-y-1">
               <div className="inline-flex items-center gap-1 bg-emerald-100 text-emerald-800 px-3 py-0.5 rounded-full text-xs font-extrabold">
                 <ShieldCheck className="w-3.5 h-3.5" />
                 <span>
-                  {role === 'STUDENT' && (isAr ? 'حساب طالب' : 'Student Account')}
-                  {role === 'TEACHER' && (isAr ? 'حساب معلم مجاز' : 'Certified Teacher')}
-                  {role === 'ADMIN' && (isAr ? 'مدير المنصة' : 'Super Admin')}
+                  {currentUser?.role === 'STUDENT' && (isAr ? 'حساب طالب' : 'Student Account')}
+                  {currentUser?.role === 'TEACHER' && (isAr ? 'حساب معلم مجاز' : 'Certified Teacher')}
+                  {currentUser?.role === 'ADMIN' && (isAr ? 'مدير المنصة' : 'Super Admin')}
                 </span>
               </div>
 
               <h1 className="text-2xl sm:text-3xl font-black text-emerald-950">
-                {role === 'STUDENT' ? (isAr ? student.nameAr : student.nameEn) : (isAr ? teacherProfile.nameAr : teacherProfile.nameEn)}
+                {displayName}
               </h1>
 
               <p className="text-slate-500 text-xs font-semibold">
-                {role === 'STUDENT' ? student.email : teacherProfile.email}
+                {currentUser?.email || email}
               </p>
             </div>
           </div>
 
           <button
             onClick={logout}
-            className="px-5 py-2.5 rounded-2xl bg-red-50 hover:bg-red-100 text-red-700 text-xs font-extrabold transition-colors flex items-center gap-1.5 shrink-0"
+            className="px-5 py-2.5 rounded-2xl bg-red-50 hover:bg-red-100 text-red-700 text-xs font-extrabold transition-colors flex items-center gap-1.5 shrink-0 cursor-pointer"
           >
             <LogOut className="w-4 h-4" />
             <span>{isAr ? 'تسجيل الخروج' : 'Logout'}</span>
@@ -150,19 +166,21 @@ export default function ProfilePage() {
                   type="tel"
                   value={phone}
                   onChange={(e) => setPhone(e.target.value)}
+                  placeholder="+966500000000"
                   className="w-full pr-10 pl-3 py-3 rounded-2xl border border-slate-300 text-xs font-semibold text-slate-800 focus:ring-2 focus:ring-emerald-500"
                 />
               </div>
             </div>
 
-            {role === 'TEACHER' && (
+            {currentUser?.role === 'TEACHER' && (
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1">
                   {isAr ? 'تفاصيل الإجازة بالسند المتصل:' : 'Ijazah Chain Details:'}
                 </label>
                 <textarea
                   rows={3}
-                  defaultValue={teacherProfile.ijazahChainAr}
+                  value={ijazah}
+                  onChange={(e) => setIjazah(e.target.value)}
                   className="w-full p-3 rounded-2xl border border-slate-300 text-xs font-serif text-slate-800"
                 />
               </div>
@@ -179,7 +197,7 @@ export default function ProfilePage() {
         </div>
 
         {/* TEACHER AVAILABILITY CARD */}
-        {role === 'TEACHER' && (
+        {currentUser?.role === 'TEACHER' && (
           <div className="bg-emerald-950 text-white rounded-3xl p-6 sm:p-8 border border-emerald-800 shadow-xl space-y-4">
             <div className="flex items-center justify-between border-b border-emerald-800/80 pb-4">
               <div className="flex items-center gap-3">
@@ -220,7 +238,7 @@ export default function ProfilePage() {
         />
 
         {/* ROLE SPECIFIC OVERVIEW CARD */}
-        {role === 'STUDENT' && (
+        {currentUser?.role === 'STUDENT' && (
           <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200 shadow-sm space-y-4">
             <h3 className="font-extrabold text-lg text-emerald-950 border-b border-slate-100 pb-3">
               {isAr ? 'بيانات المعلم الموكل والخطة' : 'Assigned Instructor & Plan'}
@@ -244,5 +262,13 @@ export default function ProfilePage() {
 
       </div>
     </div>
+  );
+}
+
+export default function ProfilePage() {
+  return (
+    <AuthGuard>
+      <ProfileContent />
+    </AuthGuard>
   );
 }

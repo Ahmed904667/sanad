@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useApp } from '@/context/AppContext';
 import { PlansGrid } from '@/components/PlansGrid';
 import { PaymentWizardModal } from '@/components/PaymentWizardModal';
+import { AuthGuard } from '@/components/AuthGuard';
 import { SubscriptionPlan } from '@/types';
 import { 
   Building2, 
@@ -19,7 +20,7 @@ import {
   PlusCircle
 } from 'lucide-react';
 
-export default function SubscriptionsPage() {
+function SubscriptionsContent() {
   const { 
     language, 
     student, 
@@ -540,5 +541,13 @@ export default function SubscriptionsPage() {
         />
       )}
     </div>
+  );
+}
+
+export default function SubscriptionsPage() {
+  return (
+    <AuthGuard allowedRoles={['STUDENT']}>
+      <SubscriptionsContent />
+    </AuthGuard>
   );
 }

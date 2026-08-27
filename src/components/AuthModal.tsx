@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
-import { X, User, Mail, Phone, Lock, GraduationCap, CheckCircle2, ArrowRight, ShieldCheck } from 'lucide-react';
+import { X, User, Mail, Phone, Lock, GraduationCap, CheckCircle2, ArrowRight, ShieldCheck, Calendar } from 'lucide-react';
 
 interface AuthModalProps {
   initialMode?: 'STUDENT_LOGIN' | 'STUDENT_REGISTER' | 'TEACHER_REGISTER';
@@ -23,6 +23,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
+  const [birthDate, setBirthDate] = useState('');
   const [gender, setGender] = useState<'MALE' | 'FEMALE'>('MALE');
   const [password, setPassword] = useState('');
   const [ijazahDetails, setIjazahDetails] = useState('');
@@ -43,8 +44,12 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         setErrorMessage(isAr ? 'يرجى إدخال الاسم الكامل' : 'Please enter full name');
         return;
       }
-      registerStudentAccount(name, email, gender, phone, password || '123456');
-      setIsSuccess(true);
+      try {
+        registerStudentAccount(name, email, gender, phone, password || '123456');
+        setIsSuccess(true);
+      } catch (err: any) {
+        setErrorMessage(err.message || (isAr ? 'حدث خطأ أثناء التسجيل.' : 'Registration failed.'));
+      }
     } else if (mode === 'STUDENT_LOGIN') {
       const res = login(email, password || '123456');
       if (res.success) {
@@ -57,8 +62,12 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         setErrorMessage(isAr ? 'يرجى تعبئة جميع الحقول المطلوبة' : 'Please fill all required fields');
         return;
       }
-      applyAsTeacher(name, email, gender, ijazahDetails, ['الإجازة بالسند المتصل'], password || '123456');
-      setIsSuccess(true);
+      try {
+        applyAsTeacher(name, email, gender, ijazahDetails, ['الإجازة بالسند المتصل'], password || '123456', phone, birthDate);
+        setIsSuccess(true);
+      } catch (err: any) {
+        setErrorMessage(err.message || (isAr ? 'حدث خطأ أثناء التسجيل.' : 'Registration failed.'));
+      }
     }
   };
 
@@ -220,15 +229,16 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                 </div>
               </div>
 
-              {mode === 'STUDENT_REGISTER' && (
+              {(mode === 'STUDENT_REGISTER' || mode === 'TEACHER_REGISTER') && (
                 <div>
                   <label className="block text-xs font-bold text-slate-700 mb-1">
-                    {isAr ? 'رقم الجوال (اختياري):' : 'Phone Number (Optional):'}
+                    {isAr ? 'رقم الجوال:' : 'Phone Number:'}
                   </label>
                   <div className="relative">
                     <Phone className="w-4 h-4 text-slate-400 absolute top-3 right-3 pointer-events-none" />
                     <input
                       type="tel"
+                      required={mode === 'TEACHER_REGISTER'}
                       value={phone}
                       onChange={(e) => setPhone(e.target.value)}
                       placeholder="+966 50 123 4567"
@@ -239,19 +249,37 @@ export const AuthModal: React.FC<AuthModalProps> = ({
               )}
 
               {mode === 'TEACHER_REGISTER' && (
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">
-                    {isAr ? 'تفاصيل الإجازة والمؤهلات القرآنية:' : 'Ijazah Credentials:'}
-                  </label>
-                  <textarea
-                    rows={3}
-                    required
-                    value={ijazahDetails}
-                    onChange={(e) => setIjazahDetails(e.target.value)}
-                    placeholder={isAr ? 'اذكر اسم الروايات الشاطبية أو الدرة والسند المتصل...' : 'Detail your unbroken Ijazah chain...'}
-                    className="w-full p-3 rounded-xl border border-slate-300 text-xs font-semibold focus:ring-2 focus:ring-amber-500"
-                  />
-                </div>
+                <>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">
+                      {isAr ? 'تاريخ الميلاد:' : 'Date of Birth:'}
+                    </label>
+                    <div className="relative">
+                      <Calendar className="w-4 h-4 text-slate-400 absolute top-3 right-3 pointer-events-none" />
+                      <input
+                        type="date"
+                        required
+                        value={birthDate}
+                        onChange={(e) => setBirthDate(e.target.value)}
+                        className="w-full pr-10 pl-3 py-2.5 rounded-xl border border-slate-300 text-xs font-semibold focus:ring-2 focus:ring-amber-500"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">
+                      {isAr ? 'تفاصيل الإجازة والمؤهلات القرآنية:' : 'Ijazah Credentials:'}
+                    </label>
+                    <textarea
+                      rows={3}
+                      required
+                      value={ijazahDetails}
+                      onChange={(e) => setIjazahDetails(e.target.value)}
+                      placeholder={isAr ? 'اذكر اسم الروايات الشاطبية أو الدرة والسند المتصل...' : 'Detail your unbroken Ijazah chain...'}
+                      className="w-full p-3 rounded-xl border border-slate-300 text-xs font-semibold focus:ring-2 focus:ring-amber-500"
+                    />
+                  </div>
+                </>
               )}
 
               <button

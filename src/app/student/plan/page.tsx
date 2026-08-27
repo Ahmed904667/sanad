@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useApp } from '@/context/AppContext';
 import { AvatarBadge } from '@/components/AvatarBadge';
+import { AuthGuard } from '@/components/AuthGuard';
 import { SUBSCRIPTION_GOALS } from '@/data/mockData';
 import { getPageMeta } from 'quran-meta/hafs';
 import { 
@@ -50,7 +51,7 @@ function calculateExactLessonStats(surahTargetAr?: string) {
   return { pages: totalPages, ayahs: totalAyahs };
 }
 
-export default function StudentPlanOverviewPage() {
+function StudentPlanOverviewContent() {
   const router = useRouter();
   const { 
     isHydrated,
@@ -353,5 +354,13 @@ export default function StudentPlanOverviewPage() {
 
       </div>
     </div>
+  );
+}
+
+export default function StudentPlanOverviewPage() {
+  return (
+    <AuthGuard allowedRoles={['STUDENT']}>
+      <StudentPlanOverviewContent />
+    </AuthGuard>
   );
 }

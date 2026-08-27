@@ -104,10 +104,20 @@ interface AppContextType {
       quranGoal: StudentQuranGoal;
       receiptFile?: string;
       bankRef?: string;
+      birthDate?: string;
       initialLessons?: Lesson[];
     }
   ) => string;
-  applyAsTeacher: (name: string, email: string, gender?: 'MALE' | 'FEMALE', ijazahDetails?: string, specializations?: string[], password?: string) => void;
+  applyAsTeacher: (
+    name: string, 
+    email: string, 
+    gender?: 'MALE' | 'FEMALE', 
+    ijazahDetails?: string, 
+    specializations?: string[], 
+    password?: string,
+    phone?: string,
+    birthDate?: string
+  ) => void;
   
   // Admin Actions
   approveTeacherByAdmin: (teacherId: string) => void;
@@ -149,6 +159,7 @@ interface AppContextType {
   cancelLesson: (lessonId: string) => void;
   clearAllClassData: () => void;
   markNotificationRead: (id: string) => void;
+  updateUserProfile: (name: string, email: string, phone: string, ijazahChain?: string) => void;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -185,16 +196,46 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }
       }
 
-      // 2. Hydrate current user & role
+      // Hydrate teachers array
+      const savedTeachers = localStorage.getItem('ratel_teachers');
+      if (savedTeachers) {
+        try {
+          const parsed = JSON.parse(savedTeachers);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            setTeachers(parsed);
+          }
+        } catch (e) {}
+      }
+
+      // 2. Hydrate current user & role strictly
       let activeUser: AuthUser | null = null;
       const savedUser = localStorage.getItem('ratel_current_user');
       if (savedUser) {
-        activeUser = JSON.parse(savedUser);
-        setCurrentUser(activeUser);
+        try {
+          const parsed = JSON.parse(savedUser);
+          if (parsed && typeof parsed === 'object' && parsed.id && parsed.role) {
+            const validUser = parsed as AuthUser;
+            activeUser = validUser;
+            setCurrentUser(validUser);
+            setRole(validUser.role);
+          } else {
+            setCurrentUser(null);
+            setRole('GUEST');
+            localStorage.removeItem('ratel_current_user');
+            localStorage.setItem('ratel_role', 'GUEST');
+          }
+        } catch (e) {
+          setCurrentUser(null);
+          setRole('GUEST');
+          localStorage.removeItem('ratel_current_user');
+          localStorage.setItem('ratel_role', 'GUEST');
+        }
+      } else {
+        setCurrentUser(null);
+        setRole('GUEST');
+        localStorage.removeItem('ratel_current_user');
+        localStorage.setItem('ratel_role', 'GUEST');
       }
-
-      const savedRole = localStorage.getItem('ratel_role') as Role;
-      if (savedRole) setRole(savedRole);
 
       // 3. Hydrate student profile (link to active user if available)
       if (activeUser && activeUser.role === 'STUDENT') {
@@ -205,13 +246,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           const savedStudent = localStorage.getItem('ratel_student');
           if (savedStudent) setStudent(JSON.parse(savedStudent));
         }
-      } else {
-        const savedStudent = localStorage.getItem('ratel_student');
-        if (savedStudent) setStudent(JSON.parse(savedStudent));
+      } else if (activeUser && activeUser.role === 'TEACHER') {
+        const savedTeacherProf = localStorage.getItem('ratel_teacher_profile');
+        if (savedTeacherProf) setTeacherProfile(JSON.parse(savedTeacherProf));
       }
-
-      const savedTeacherProf = localStorage.getItem('ratel_teacher_profile');
-      if (savedTeacherProf) setTeacherProfile(JSON.parse(savedTeacherProf));
 
       // 4. Hydrate lessons from local storage
       const savedLessonsStr = localStorage.getItem('ratel_lessons');
@@ -304,11 +342,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   useEffect(() => {
     if (!isHydrated) return;
     try {
-      if (currentUser) localStorage.setItem('ratel_current_user', JSON.stringify(currentUser));
-      else localStorage.removeItem('ratel_current_user');
-      localStorage.setItem('ratel_role', role);
+      if (currentUser) {
+        localStorage.setItem('ratel_current_user', JSON.stringify(currentUser));
+        localStorage.setItem('ratel_role', currentUser.role);
+      } else {
+        localStorage.removeItem('ratel_current_user');
+        localStorage.setItem('ratel_role', 'GUEST');
+      }
     } catch (e) {}
-  }, [currentUser, role, isHydrated]);
+  }, [currentUser, isHydrated]);
 
   useEffect(() => {
     document.documentElement.lang = language;
@@ -336,90 +378,92 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const login = (identifier: string, pass: string) => {
-    const emailClean = identifier.trim().toLowerCase();
+    const rawInput = identifier.trim();
+    const emailClean = rawInput.toLowerCase();
+    const phoneClean = rawInput.replace(/[\s\-\(\)\+]/g, '');
     const passClean = pass.trim();
 
     if (!emailClean) {
-      return { success: false, error: 'يرجى إدخال البريد الإلكتروني' };
+      return { success: false, error: 'يرجى إدخال البريد الإلكتروني أو رقم الجوال' };
     }
 
-    const foundAccount = userAccounts.find(acc => acc.email.toLowerCase() === emailClean) ||
-                         DEFAULT_ACCOUNTS.find(acc => acc.email.toLowerCase() === emailClean);
+    // 1. Search in userAccounts and DEFAULT_ACCOUNTS by email or phone
+    const foundAccount = userAccounts.find(acc => 
+      acc.email.toLowerCase() === emailClean || 
+      (acc.phone && acc.phone.replace(/[\s\-\(\)\+]/g, '') === phoneClean)
+    ) || DEFAULT_ACCOUNTS.find(acc => 
+      acc.email.toLowerCase() === emailClean || 
+      (acc.phone && acc.phone.replace(/[\s\-\(\)\+]/g, '') === phoneClean)
+    );
 
-    if (!foundAccount) {
-      const foundTeacher = teachers.find(t => t.email.toLowerCase() === emailClean);
-      if (foundTeacher) {
-        if (passClean && passClean !== '123456' && passClean !== 'password123') {
-          return { success: false, error: 'كلمة المرور غير صحيحة، يرجى إعادة المحاولة' };
-        }
-        const tProf: TeacherProfile = {
-          ...foundTeacher,
-          totalStudents: 18,
-          totalHoursTaught: 340,
-          ratingAvg: foundTeacher.rating,
-          ijazahChainAr: foundTeacher.ijazahDetailsAr,
-          ijazahChainEn: foundTeacher.ijazahDetailsEn
-        };
-        setTeacherProfile(tProf);
-        const userObj: AuthUser = {
-          id: foundTeacher.id,
-          nameAr: foundTeacher.nameAr,
-          nameEn: foundTeacher.nameEn,
-          email: foundTeacher.email,
-          role: 'TEACHER',
-          teacherApprovalStatus: foundTeacher.approvalStatus
-        };
-        setCurrentUser(userObj);
-        setRole('TEACHER');
-        return { success: true, role: 'TEACHER' as Role, status: foundTeacher.approvalStatus };
-      }
+    // 2. Search in teachers list by email or phone if account not found in userAccounts
+    const foundTeacherObj = teachers.find(t => 
+      t.email.toLowerCase() === emailClean || 
+      (t.phone && t.phone.replace(/[\s\-\(\)\+]/g, '') === phoneClean) ||
+      (foundAccount && t.id === foundAccount.id)
+    );
 
-      return { success: false, error: 'البريد الإلكتروني غير مسجّل، يرجى إنشاء حساب جديد أولاً' };
+    if (!foundAccount && !foundTeacherObj) {
+      return { success: false, error: 'اسم المستخدم أو البريد الإلكتروني غير مسجّل، يرجى التأكد من كتابة البيانات بشكل صحيح أو إنشاء حساب جديد.' };
     }
 
-    // STRICT PASSWORD VALIDATION
-    if (foundAccount.password && passClean !== foundAccount.password && passClean !== '123456' && passClean !== 'password123') {
+    // Password validation logic
+    const expectedPassword = foundAccount?.password || '123456';
+    if (passClean && passClean !== expectedPassword && passClean !== '123456' && passClean !== 'password123') {
       return { success: false, error: 'كلمة المرور غير صحيحة، يرجى إعادة المحاولة' };
     }
 
-    if (foundAccount.isBlocked) {
+    if (foundAccount?.isBlocked) {
       return { success: false, error: 'تم حظر هذا الحساب من قبل إدارة المنصة. يرجى التواصل مع الدعم الفني.' };
     }
 
+    const determinedRole: Role = foundAccount?.role || (foundTeacherObj ? 'TEACHER' : 'STUDENT');
     const userObj: AuthUser = {
-      id: foundAccount.id,
-      nameAr: foundAccount.name,
-      nameEn: foundAccount.name,
-      email: foundAccount.email,
-      role: foundAccount.role
+      id: foundAccount?.id || foundTeacherObj?.id || 'usr-' + Date.now(),
+      nameAr: foundAccount?.name || foundTeacherObj?.nameAr || emailClean,
+      nameEn: foundAccount?.name || foundTeacherObj?.nameEn || emailClean,
+      email: foundAccount?.email || foundTeacherObj?.email || emailClean,
+      role: determinedRole,
+      teacherApprovalStatus: foundTeacherObj?.approvalStatus || 'APPROVED'
     };
 
     setCurrentUser(userObj);
-    setRole(foundAccount.role);
+    setRole(determinedRole);
+    try {
+      localStorage.setItem('ratel_current_user', JSON.stringify(userObj));
+      localStorage.setItem('ratel_role', determinedRole);
+    } catch (e) {}
 
-    if (foundAccount.role === 'STUDENT') {
-      const baseProfile = foundAccount.studentProfile || INITIAL_STUDENT;
+    if (determinedRole === 'STUDENT') {
+      const baseProfile = foundAccount?.studentProfile || INITIAL_STUDENT;
       const activeStudentProfile: StudentProfile = {
         ...baseProfile,
-        id: foundAccount.id,
-        nameAr: foundAccount.name,
-        nameEn: foundAccount.name,
-        email: foundAccount.email
+        id: userObj.id,
+        nameAr: userObj.nameAr,
+        nameEn: userObj.nameEn,
+        email: userObj.email
       };
       setStudent(activeStudentProfile);
-    } else if (foundAccount.role === 'TEACHER') {
-      const foundTeacher = teachers.find(t => t.id === foundAccount.id || t.email.toLowerCase() === emailClean) || teachers[0];
-      setTeacherProfile({
-        ...foundTeacher,
+      try {
+        localStorage.setItem('ratel_student', JSON.stringify(activeStudentProfile));
+      } catch (e) {}
+    } else if (determinedRole === 'TEACHER') {
+      const tTarget = foundTeacherObj || teachers[0];
+      const tProf: TeacherProfile = {
+        ...tTarget,
         totalStudents: 18,
         totalHoursTaught: 340,
-        ratingAvg: foundTeacher.rating,
-        ijazahChainAr: foundTeacher.ijazahDetailsAr,
-        ijazahChainEn: foundTeacher.ijazahDetailsEn
-      });
+        ratingAvg: tTarget.rating,
+        ijazahChainAr: tTarget.ijazahDetailsAr,
+        ijazahChainEn: tTarget.ijazahDetailsEn
+      };
+      setTeacherProfile(tProf);
+      try {
+        localStorage.setItem('ratel_teacher_profile', JSON.stringify(tProf));
+      } catch (e) {}
     }
 
-    return { success: true, role: foundAccount.role };
+    return { success: true, role: determinedRole, status: foundTeacherObj?.approvalStatus };
   };
 
   const logout = () => {
@@ -429,6 +473,71 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       localStorage.removeItem('ratel_current_user');
       localStorage.setItem('ratel_role', 'GUEST');
     } catch (e) {}
+  };
+
+  const updateUserProfile = (name: string, email: string, phone: string, ijazahChain?: string) => {
+    if (!currentUser) return;
+    const cleanEmail = email.trim().toLowerCase();
+    const cleanName = name.trim();
+
+    const updatedUser: AuthUser = {
+      ...currentUser,
+      nameAr: cleanName,
+      nameEn: cleanName,
+      email: cleanEmail
+    };
+    setCurrentUser(updatedUser);
+    try {
+      localStorage.setItem('ratel_current_user', JSON.stringify(updatedUser));
+    } catch (e) {}
+
+    if (currentUser.role === 'STUDENT') {
+      setStudent(prev => ({
+        ...prev,
+        nameAr: cleanName,
+        nameEn: cleanName,
+        email: cleanEmail,
+        phone: phone.trim()
+      }));
+    } else if (currentUser.role === 'TEACHER') {
+      setTeacherProfile(prev => ({
+        ...prev,
+        nameAr: cleanName,
+        nameEn: cleanName,
+        email: cleanEmail,
+        phone: phone.trim(),
+        ijazahChainAr: ijazahChain || prev.ijazahChainAr,
+        ijazahChainEn: ijazahChain || prev.ijazahChainEn
+      }));
+      setTeachers(prev => prev.map(t => (t.id === currentUser.id || t.email.toLowerCase() === currentUser.email.toLowerCase()) ? {
+        ...t,
+        nameAr: cleanName,
+        nameEn: cleanName,
+        email: cleanEmail,
+        phone: phone.trim(),
+        ijazahDetailsAr: ijazahChain || t.ijazahDetailsAr,
+        ijazahDetailsEn: ijazahChain || t.ijazahDetailsEn
+      } : t));
+    }
+
+    setUserAccounts(prev => prev.map(acc => {
+      if (acc.id === currentUser.id || acc.email.toLowerCase() === currentUser.email.toLowerCase()) {
+        return {
+          ...acc,
+          name: cleanName,
+          email: cleanEmail,
+          phone: phone.trim(),
+          studentProfile: acc.studentProfile ? {
+            ...acc.studentProfile,
+            nameAr: cleanName,
+            nameEn: cleanName,
+            email: cleanEmail,
+            phone: phone.trim()
+          } : undefined
+        };
+      }
+      return acc;
+    }));
   };
 
   const registerStudentAccount = (
@@ -443,16 +552,30 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       quranGoal: StudentQuranGoal;
       receiptFile?: string;
       bankRef?: string;
+      birthDate?: string;
       initialLessons?: Lesson[];
     }
   ): string => {
-    const assignedTeacher = teachers.find(t => t.id === onboardingData?.teacherId) || teachers.find(t => t.gender === gender && !t.isFullyBooked) || teachers[0];
+    const approvedScholars = teachers.filter(t => t.approvalStatus === 'APPROVED');
+    const assignedTeacher = approvedScholars.find(t => t.id === onboardingData?.teacherId) || 
+      approvedScholars.find(t => t.gender === gender && !t.isFullyBooked) || 
+      approvedScholars[0] || 
+      teachers[0];
     const emailClean = email.trim().toLowerCase();
+    const phoneClean = phone ? phone.replace(/[\s\-\(\)\+]/g, '') : '';
 
     // Check duplicate email registration
-    const existingUser = userAccounts.find(a => a.email.toLowerCase() === emailClean && a.id !== currentUser?.id);
-    if (existingUser) {
+    const existingEmailAcc = userAccounts.find(a => a.email.toLowerCase() === emailClean && a.id !== currentUser?.id);
+    if (existingEmailAcc) {
       throw new Error('هذا البريد الإلكتروني مسجل بالفعل في المنصة. يرجى استخدام بريد إلكتروني آخر أو تسجيل الدخول.');
+    }
+
+    // Check duplicate phone registration
+    if (phoneClean) {
+      const existingPhoneAcc = userAccounts.find(a => a.phone && a.phone.replace(/[\s\-\(\)\+]/g, '') === phoneClean && a.id !== currentUser?.id);
+      if (existingPhoneAcc) {
+        throw new Error('رقم الجوال هذا مسجل بالفعل في المنصة. يرجى استخدام رقم آخر أو تسجيل الدخول.');
+      }
     }
 
     const selectedPlanId = onboardingData?.planId || 'plan-basic';
@@ -467,6 +590,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       nameEn: name,
       email: emailClean,
       phone: phone || '',
+      birthDate: onboardingData?.birthDate,
       gender,
       verificationStatus: 'PENDING_VERIFICATION',
       activePlanId: null,
@@ -555,13 +679,39 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return newStudentId;
   };
 
-  const applyAsTeacher = (name: string, email: string, gender: 'MALE' | 'FEMALE' = 'MALE', ijazahDetails: string = '', specializations: string[] = [], password?: string) => {
+  const applyAsTeacher = (
+    name: string, 
+    email: string, 
+    gender: 'MALE' | 'FEMALE' = 'MALE', 
+    ijazahDetails: string = '', 
+    specializations: string[] = [], 
+    password?: string,
+    phone?: string,
+    birthDate?: string
+  ) => {
     const emailClean = email.trim().toLowerCase();
+    const phoneClean = phone ? phone.replace(/[\s\-\(\)\+]/g, '') : '';
+
+    // Check duplicate email registration
+    const existingEmailAcc = userAccounts.find(a => a.email.toLowerCase() === emailClean && a.id !== currentUser?.id);
+    if (existingEmailAcc) {
+      throw new Error('هذا البريد الإلكتروني مسجل بالفعل في المنصة. يرجى استخدام بريد إلكتروني آخر أو تسجيل الدخول.');
+    }
+
+    // Check duplicate phone registration
+    if (phoneClean) {
+      const existingPhoneAcc = userAccounts.find(a => a.phone && a.phone.replace(/[\s\-\(\)\+]/g, '') === phoneClean && a.id !== currentUser?.id);
+      if (existingPhoneAcc) {
+        throw new Error('رقم الجوال هذا مسجل بالفعل في المنصة. يرجى استخدام رقم آخر أو تسجيل الدخول.');
+      }
+    }
     const newTeacher: Teacher = {
       id: 'tech-' + Date.now(),
       nameAr: name,
       nameEn: name,
       email: emailClean,
+      phone: phone || '',
+      birthDate: birthDate || '',
       titleAr: gender === 'FEMALE' ? 'معلمة قرآن مجازة بالسند المتصل' : 'معلم قرآن مجاز بالسند المتصل',
       titleEn: 'Certified Quran Scholar',
       rating: 5.0,
@@ -592,7 +742,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       email: emailClean,
       password: password || '123456',
       gender,
-      role: 'TEACHER'
+      role: 'TEACHER',
+      phone
     };
 
     setUserAccounts(prev => {
@@ -618,14 +769,33 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const approveTeacherByAdmin = (teacherId: string) => {
-    setTeachers(prev => prev.map(t => t.id === teacherId ? { ...t, approvalStatus: 'APPROVED' as const } : t));
+    setTeachers(prev => {
+      const updated = prev.map(t => t.id === teacherId ? { ...t, approvalStatus: 'APPROVED' as const } : t);
+      try {
+        localStorage.setItem('ratel_teachers', JSON.stringify(updated));
+      } catch (e) {}
+      return updated;
+    });
+
+    setUserAccounts(prev => {
+      const updated = prev.map(a => a.id === teacherId ? { ...a, teacherApprovalStatus: 'APPROVED' as const } : a);
+      try {
+        localStorage.setItem('ratel_user_accounts', JSON.stringify(updated));
+      } catch (e) {}
+      return updated;
+    });
+
+    if (currentUser?.id === teacherId) {
+      setCurrentUser(prev => prev ? { ...prev, teacherApprovalStatus: 'APPROVED' } : null);
+    }
+
     setNotifications(prev => [
       {
         id: 'notif-' + Date.now(),
-        titleAr: 'تم قبول حساب المعلم',
-        titleEn: 'Teacher Account Approved',
-        messageAr: 'تم الموافقة على طلب انضمامك لكادر معلّمي سنَد.',
-        messageEn: 'Your scholar application has been approved by admin.',
+        titleAr: 'تم قبول وتفعيل حساب المعلم',
+        titleEn: 'Teacher Account Approved & Activated',
+        messageAr: 'تم الموافقة على طلب انضمامك وتفعيل حسابك كمعلم في منصة سَنَد.',
+        messageEn: 'Your scholar application has been approved and activated by admin.',
         time: 'الآن',
         read: false,
         type: 'TEACHER_APPROVED' as const
@@ -635,7 +805,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const rejectTeacherByAdmin = (teacherId: string) => {
-    setTeachers(prev => prev.map(t => t.id === teacherId ? { ...t, approvalStatus: 'REJECTED' } : t));
+    setTeachers(prev => {
+      const updated = prev.map(t => t.id === teacherId ? { ...t, approvalStatus: 'REJECTED' as const } : t);
+      try {
+        localStorage.setItem('ratel_teachers', JSON.stringify(updated));
+      } catch (e) {}
+      return updated;
+    });
+
+    setUserAccounts(prev => {
+      const updated = prev.map(a => a.id === teacherId ? { ...a, teacherApprovalStatus: 'REJECTED' as const } : a);
+      try {
+        localStorage.setItem('ratel_user_accounts', JSON.stringify(updated));
+      } catch (e) {}
+      return updated;
+    });
   };
 
   const submitPaymentReceipt = (planId: string, teacherId: string, receiptFile: string, bankRef: string) => {
@@ -1402,18 +1586,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     newSlots: string[],
     conflictResolutionOption: 'KEEP_EXISTING' | 'CANCEL_AND_REFUND_CREDIT' | 'NOTIFY_STUDENTS'
   ) => {
-    setTeachers(prev => prev.map(t => {
-      if (t.id === teacherId) {
-        return {
-          ...t,
-          workingHoursStart: newStart,
-          workingHoursEnd: newEnd,
-          workingDaysAr: newDays,
-          availableSlots: newSlots
-        };
-      }
-      return t;
-    }));
+    setTeachers(prev => {
+      const updated = prev.map(t => {
+        if (t.id === teacherId) {
+          return {
+            ...t,
+            workingHoursStart: newStart,
+            workingHoursEnd: newEnd,
+            workingDaysAr: newDays,
+            availableSlots: newSlots
+          };
+        }
+        return t;
+      });
+      try {
+        localStorage.setItem('ratel_teachers', JSON.stringify(updated));
+      } catch (e) {}
+      return updated;
+    });
 
     if (conflictResolutionOption === 'CANCEL_AND_REFUND_CREDIT') {
       let cancelledCount = 0;
@@ -1569,7 +1759,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       completeLesson,
       cancelLesson,
       clearAllClassData,
-      markNotificationRead
+      markNotificationRead,
+      updateUserProfile
     }}>
       {children}
     </AppContext.Provider>

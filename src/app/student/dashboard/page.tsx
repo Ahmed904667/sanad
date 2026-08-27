@@ -9,6 +9,7 @@ import { ReviewModal } from '@/components/ReviewModal';
 import { PaymentWizardModal } from '@/components/PaymentWizardModal';
 import { BatchRescheduleModal } from '@/components/BatchRescheduleModal';
 import { TeacherReviewsModal } from '@/components/TeacherReviewsModal';
+import { AuthGuard } from '@/components/AuthGuard';
 import { Teacher } from '@/types';
 import { getPageMeta } from 'quran-meta/hafs';
 import { getDayNameArFromDate } from '@/data/quranData';
@@ -68,7 +69,7 @@ function calculateExactLessonStats(surahTargetAr?: string) {
   return { pages: totalPages, ayahs: totalAyahs };
 }
 
-export default function StudentDashboard() {
+function StudentDashboardContent() {
   const { 
     isHydrated,
     language, 
@@ -790,5 +791,13 @@ export default function StudentDashboard() {
         )}
       </div>
     </div>
+  );
+}
+
+export default function StudentDashboard() {
+  return (
+    <AuthGuard allowedRoles={['STUDENT']}>
+      <StudentDashboardContent />
+    </AuthGuard>
   );
 }

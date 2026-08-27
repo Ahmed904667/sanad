@@ -39,8 +39,8 @@ export const Header: React.FC = () => {
   const unreadCount = notifications.filter(n => !n.read).length;
   const isAr = language === 'ar';
 
-  // Render DashboardHeader whenever a user is logged in
-  if (currentUser !== null) {
+  // Render DashboardHeader only whenever a user is actively logged in and app is hydrated
+  if (isHydrated && currentUser !== null) {
     return <DashboardHeader />;
   }
 
@@ -80,15 +80,6 @@ export const Header: React.FC = () => {
             className="text-slate-600 hover:text-emerald-800 transition-colors py-1"
           >
             {isAr ? 'الخطط والأسعار' : 'Plans & Pricing'}
-          </Link>
-
-          <Link
-            href="/teachers"
-            className={`transition-colors py-1 ${
-              pathname === '/teachers' ? 'text-emerald-700 font-extrabold border-b-2 border-amber-500' : 'text-slate-600 hover:text-emerald-800'
-            }`}
-          >
-            {isAr ? 'المعلمون المجازون' : 'Scholars Directory'}
           </Link>
 
           <Link

@@ -27,18 +27,13 @@ export const PlansGrid: React.FC<PlansGridProps> = ({ onSelectPlan }) => {
         
         {/* Section Header */}
         <div className="text-center max-w-3xl mx-auto space-y-3">
-          <div className="inline-flex items-center gap-2 bg-emerald-100 text-emerald-800 px-4 py-1.5 rounded-full text-xs font-bold shadow-xs">
-            <Sparkles className="w-4 h-4 text-amber-600" />
-            <span>{isAr ? 'جميع الخطط تشمل +1 حصة تمهيدية مجانية' : 'All Plans Include +1 Free Orientation Session'}</span>
-          </div>
-
           <h2 className="text-3xl sm:text-4xl font-black text-emerald-950 tracking-tight">
-            {isAr ? 'خطط الاشتراك بالريال السعودي (SAR)' : 'Subscription Plans in SAR'}
+            {isAr ? 'خطط الاشتراك' : 'Subscription Plans'}
           </h2>
 
           <p className="text-slate-600 text-xs sm:text-sm font-medium leading-relaxed max-w-2xl mx-auto">
             {isAr
-              ? 'تتضمن كل خطة حصة تمهيدية مجانية لمقابلة المعلم والاتفاق على هدفك (حفظ جديد، تلاوة وتصحيح، أو مراجعة)، ثم يتم تحويل الرسوم بالريال السعودي.'
+              ? 'تتضمن كل خطة حصة تمهيدية مجانية لمقابلة المعلم والاتفاق على هدفك (حفظ جديد، تلاوة وتصحيح، أو مراجعة).'
               : 'Includes a free orientation class to set your Quranic goal (Hifz, Tilawah, or Review), paid via Saudi Bank transfer.'}
           </p>
         </div>

@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import { Teacher } from '../types';
 import { useApp } from '../context/AppContext';
 import { X, Calendar, Clock, Video, CheckCircle2, AlertCircle, Sparkles, ExternalLink } from 'lucide-react';
+import { formatTime12h } from '../utils/timeFormat';
 
 interface BookingModalProps {
   teacher: Teacher | null;
@@ -24,11 +25,9 @@ export const BookingModal: React.FC<BookingModalProps> = ({ teacher, onClose }) 
   for (let h = startHour; h <= endHour; h++) {
     const slotStr = `${h.toString().padStart(2, '0')}:00`;
     const isBooked = teacher?.bookedTimeSlots?.includes(slotStr) ?? false;
-    const displayH = h % 12 === 0 ? 12 : h % 12;
-    const period = h >= 12 ? (isAr ? 'م' : 'PM') : (isAr ? 'ص' : 'AM');
     availableSlotsList.push({
       rawSlot: slotStr,
-      formattedText: `${displayH}:00 ${period}`,
+      formattedText: formatTime12h(slotStr, isAr),
       isBooked
     });
   }

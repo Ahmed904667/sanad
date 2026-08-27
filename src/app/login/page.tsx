@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useApp } from '@/context/AppContext';
@@ -18,8 +18,20 @@ import {
 
 export default function LoginPage() {
   const router = useRouter();
-  const { language, login } = useApp();
+  const { language, login, currentUser, isHydrated } = useApp();
   const isAr = language === 'ar';
+
+  useEffect(() => {
+    if (isHydrated && currentUser) {
+      if (currentUser.role === 'ADMIN') {
+        router.replace('/admin/dashboard');
+      } else if (currentUser.role === 'TEACHER') {
+        router.replace('/teacher/dashboard');
+      } else {
+        router.replace('/student/dashboard');
+      }
+    }
+  }, [isHydrated, currentUser, router]);
 
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');

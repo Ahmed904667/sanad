@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { useApp } from '@/context/AppContext';
 import { AvatarBadge } from '@/components/AvatarBadge';
 import { TeacherReviewsModal } from '@/components/TeacherReviewsModal';
+import { AuthGuard } from '@/components/AuthGuard';
 import { SubscriptionPlan, Teacher, Lesson, LearningGoalTrack, StudentQuranGoal, Review } from '@/types';
 import { SUBSCRIPTION_GOALS } from '@/data/mockData';
 import { 
@@ -55,7 +56,7 @@ import {
   Info
 } from 'lucide-react';
 
-export default function PlanBuilderPage() {
+function PlanBuilderContent() {
   const router = useRouter();
   const { 
     language, 
@@ -70,6 +71,12 @@ export default function PlanBuilderPage() {
     updateUpcomingPlanLessons 
   } = useApp();
   const isAr = language === 'ar';
+
+  useEffect(() => {
+    if (currentUser?.role === 'TEACHER') {
+      router.replace('/teacher/dashboard');
+    }
+  }, [currentUser, router]);
 
   const [isSavedSuccessfully, setIsSavedSuccessfully] = useState(false);
   const currentStudentId = currentUser?.id || student.id;
@@ -116,12 +123,15 @@ export default function PlanBuilderPage() {
   const [isAyahCustomizerOpen, setIsAyahCustomizerOpen] = useState<boolean>(false);
   const [surahSearchQuery, setSurahSearchQuery] = useState<string>('');
 
-  // 3. TEACHER SELECTION
+  // 3. TEACHER SELECTION (Filtered by Gender & Admin Approval)
   const studentGender = student.gender || 'MALE';
-  const filteredTeachers = teachers.filter(t => t.gender === studentGender);
+  const approvedTeachers = teachers.filter(t => t.approvalStatus === 'APPROVED');
+  const filteredTeachers = approvedTeachers.filter(t => t.gender === studentGender).length > 0
+    ? approvedTeachers.filter(t => t.gender === studentGender)
+    : (approvedTeachers.length > 0 ? approvedTeachers : teachers);
   const [selectedTeacherId, setSelectedTeacherId] = useState<string>(() => {
     const saved = student.quranGoal?.assignedTeacherId || student.assignedTeacherId;
-    if (saved && teachers.some(t => t.id === saved)) return saved;
+    if (saved && approvedTeachers.some(t => t.id === saved)) return saved;
     return filteredTeachers[0]?.id || teachers[0]?.id;
   });
   const [modalReviewsTeacher, setModalReviewsTeacher] = useState<Teacher | null>(null);
@@ -1789,5 +1799,13 @@ export default function PlanBuilderPage() {
         )}
       </div>
     </div>
+  );
+}
+
+export default function PlanBuilderPage() {
+  return (
+    <AuthGuard allowedRoles={['STUDENT']}>
+      <PlanBuilderContent />
+    </AuthGuard>
   );
 }

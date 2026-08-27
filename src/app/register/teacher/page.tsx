@@ -4,7 +4,7 @@ import React, { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useApp } from '@/context/AppContext';
-import { GraduationCap, Mail, Award, Lock, CheckCircle2, User, BookOpen } from 'lucide-react';
+import { GraduationCap, Mail, Award, Lock, CheckCircle2, User, BookOpen, Phone, Calendar } from 'lucide-react';
 
 export default function TeacherRegisterPage() {
   const router = useRouter();
@@ -13,17 +13,29 @@ export default function TeacherRegisterPage() {
 
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
+  const [phone, setPhone] = useState('');
+  const [birthDate, setBirthDate] = useState('');
   const [gender, setGender] = useState<'MALE' | 'FEMALE'>('MALE');
   const [password, setPassword] = useState('');
   const [ijazahDetails, setIjazahDetails] = useState('');
   const [specializations, setSpecializations] = useState<string[]>(['الإجازة بالسند المتصل']);
+  const [formError, setFormError] = useState<string | null>(null);
 
   const handleTeacherSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name || !email || !ijazahDetails) return;
+    setFormError(null);
 
-    applyAsTeacher(name, email, gender, ijazahDetails, specializations, password);
-    router.push('/teacher/dashboard');
+    if (!name.trim() || !email.trim() || !ijazahDetails.trim()) {
+      setFormError(isAr ? 'يرجى تعبئة جميع الحقول المطلوبة' : 'Please fill all required fields');
+      return;
+    }
+
+    try {
+      applyAsTeacher(name, email, gender, ijazahDetails, specializations, password, phone, birthDate);
+      router.push('/teacher/dashboard');
+    } catch (err: any) {
+      setFormError(err.message || (isAr ? 'حدث خطأ أثناء التسجيل.' : 'An error occurred during registration.'));
+    }
   };
 
   return (
@@ -41,6 +53,12 @@ export default function TeacherRegisterPage() {
             {isAr ? 'انضم لنخبة المعلمين المعلمين والمعلمات المجازين' : 'Apply to join our faculty of certified Quran scholars'}
           </p>
         </div>
+
+        {formError && (
+          <div className="bg-red-50 border border-red-200 text-red-800 p-4 rounded-2xl text-xs font-bold animate-shake">
+            {formError}
+          </div>
+        )}
 
         <form onSubmit={handleTeacherSubmit} className="space-y-4">
           <div>
@@ -106,6 +124,39 @@ export default function TeacherRegisterPage() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="scholar@sanad.com"
+                className="w-full pr-10 pl-3 py-3 rounded-2xl border border-slate-300 text-xs font-semibold text-slate-800 focus:ring-2 focus:ring-amber-500"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold text-slate-700 mb-1">
+              {isAr ? 'رقم الجوال (مع مفتاح الدولة):' : 'Phone Number:'}
+            </label>
+            <div className="relative">
+              <Phone className="w-4 h-4 text-slate-400 absolute top-3.5 right-3.5 pointer-events-none" />
+              <input
+                type="tel"
+                required
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                placeholder="+966 50 000 0000"
+                className="w-full pr-10 pl-3 py-3 rounded-2xl border border-slate-300 text-xs font-semibold text-slate-800 focus:ring-2 focus:ring-amber-500"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold text-slate-700 mb-1">
+              {isAr ? 'تاريخ الميلاد:' : 'Date of Birth:'}
+            </label>
+            <div className="relative">
+              <Calendar className="w-4 h-4 text-slate-400 absolute top-3.5 right-3.5 pointer-events-none" />
+              <input
+                type="date"
+                required
+                value={birthDate}
+                onChange={(e) => setBirthDate(e.target.value)}
                 className="w-full pr-10 pl-3 py-3 rounded-2xl border border-slate-300 text-xs font-semibold text-slate-800 focus:ring-2 focus:ring-amber-500"
               />
             </div>

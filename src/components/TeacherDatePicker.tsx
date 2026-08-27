@@ -2,7 +2,7 @@
 
 import React, { useState, useMemo } from 'react';
 import { getDayNameArFromDate } from '@/data/quranData';
-import { Calendar, ChevronLeft, ChevronRight, Lock } from 'lucide-react';
+import { Calendar as CalendarIcon, ChevronLeft, ChevronRight, Lock, CheckCircle2 } from 'lucide-react';
 
 interface TeacherDatePickerProps {
   selectedDate: string; // YYYY-MM-DD
@@ -68,6 +68,10 @@ export function TeacherDatePicker({
     return isAr ? `الأسبوع ${weekOffset + 1} (${start} - ${end})` : `Week ${weekOffset + 1} (${start} - ${end})`;
   }, [weekDays, weekOffset, isAr]);
 
+  const selectedDayName = useMemo(() => {
+    return getDayNameArFromDate(selectedDate);
+  }, [selectedDate]);
+
   // Ensure initial selectedDate is valid
   React.useEffect(() => {
     if (workingDaysAr && workingDaysAr.length > 0) {
@@ -82,15 +86,34 @@ export function TeacherDatePicker({
   }, [selectedDate, workingDaysAr, weekDays, onSelectDate]);
 
   return (
-    <div className="bg-slate-50 border border-slate-200/90 rounded-2xl p-3.5 space-y-3 shadow-2xs">
+    <div className="bg-slate-50 border border-slate-200/90 rounded-3xl p-3.5 sm:p-4 space-y-3 shadow-2xs">
       {/* Header & Week Pager */}
       <div className="flex items-center justify-between gap-2 flex-wrap text-xs">
         <div className="flex items-center gap-2">
-          <Calendar className="w-4 h-4 text-emerald-700 shrink-0" />
-          <span className="font-black text-slate-900">{weekRangeLabel}</span>
+          <div className="w-8 h-8 rounded-xl bg-emerald-100 text-emerald-900 flex items-center justify-center font-bold shrink-0">
+            <CalendarIcon className="w-4 h-4 text-emerald-800" />
+          </div>
+          <div>
+            <span className="font-black text-slate-900 block leading-tight">{weekRangeLabel}</span>
+            <span className="text-[10px] font-extrabold text-emerald-800 block">
+              {isAr ? `المحدد: ${selectedDayName} (${selectedDate})` : `Selected: ${selectedDate}`}
+            </span>
+          </div>
         </div>
 
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-1.5">
+          {/* Direct Native Date Input Selector */}
+          <input
+            type="date"
+            value={selectedDate}
+            min={new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().split('T')[0]}
+            onChange={(e) => {
+              if (e.target.value) onSelectDate(e.target.value);
+            }}
+            className="py-1 px-2 text-[11px] font-bold rounded-xl border border-slate-300 bg-white text-slate-700 cursor-pointer shadow-2xs focus:ring-2 focus:ring-emerald-500"
+            title={isAr ? 'اختيار تاريخ مباشر' : 'Select direct date'}
+          />
+
           <button
             type="button"
             disabled={weekOffset === 0}
@@ -98,12 +121,11 @@ export function TeacherDatePicker({
             className={`p-1.5 rounded-xl border text-xs font-bold transition-all flex items-center gap-1 ${
               weekOffset === 0
                 ? 'bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed opacity-50'
-                : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100 cursor-pointer'
+                : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100 cursor-pointer shadow-2xs'
             }`}
             title={isAr ? 'الأسبوع السابق' : 'Previous Week'}
           >
-            {isAr ? <ChevronRight className="w-3.5 h-3.5" /> : <ChevronLeft className="w-3.5 h-3.5" />}
-            <span className="hidden sm:inline text-[11px]">{isAr ? 'السابق' : 'Prev'}</span>
+            {isAr ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
           </button>
 
           <button
@@ -113,18 +135,17 @@ export function TeacherDatePicker({
             className={`p-1.5 rounded-xl border text-xs font-bold transition-all flex items-center gap-1 ${
               weekOffset >= 4
                 ? 'bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed opacity-50'
-                : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100 cursor-pointer'
+                : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100 cursor-pointer shadow-2xs'
             }`}
             title={isAr ? 'الأسبوع التالي' : 'Next Week'}
           >
-            <span className="hidden sm:inline text-[11px]">{isAr ? 'التالي' : 'Next'}</span>
-            {isAr ? <ChevronLeft className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
+            {isAr ? <ChevronLeft className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
           </button>
         </div>
       </div>
 
-      {/* Single Compact 7-Day Horizontal Row */}
-      <div className="grid grid-cols-7 gap-1.5 sm:gap-2">
+      {/* Responsive Days Carousel / Grid (Scrollable snap row on mobile with min 85px width, 7 cols on desktop) */}
+      <div className="flex sm:grid sm:grid-cols-7 overflow-x-auto gap-2 pb-1.5 pt-0.5 scrollbar-thin snap-x">
         {weekDays.map((item) => {
           const isSelected = selectedDate === item.dateStr;
 
@@ -134,18 +155,18 @@ export function TeacherDatePicker({
                 key={item.dateStr}
                 type="button"
                 disabled={true}
-                className="py-2.5 px-1 rounded-xl border border-slate-200 bg-slate-100/90 text-slate-400 text-center opacity-40 cursor-not-allowed select-none flex flex-col items-center justify-center space-y-0.5"
+                className="min-w-[85px] sm:min-w-0 flex-1 shrink-0 snap-start py-3 px-2 rounded-2xl border border-slate-200 bg-slate-100/90 text-slate-400 text-center opacity-40 cursor-not-allowed select-none flex flex-col items-center justify-center space-y-1"
                 title={isAr ? `المعلم لا يعمل يوم ${item.dayNameAr}` : 'Scholar Off'}
               >
-                <span className="text-[10px] font-mono text-slate-400 line-through font-bold">
-                  {item.mmdd}
-                </span>
-                <span className="text-[10px] font-extrabold truncate max-w-full text-slate-400">
+                <span className="text-xs font-black whitespace-nowrap text-slate-500">
                   {item.dayNameAr}
                 </span>
-                <span className="text-[8px] font-black text-rose-700 flex items-center gap-0.5">
-                  <Lock className="w-2 h-2" />
-                  <span>{isAr ? 'غير متاح' : 'Off'}</span>
+                <span className="text-xs font-mono font-black text-slate-400 line-through">
+                  {item.mmdd}
+                </span>
+                <span className="text-[9px] font-black text-rose-700 bg-rose-50 border border-rose-200 px-1.5 py-0.5 rounded-md flex items-center gap-0.5 whitespace-nowrap">
+                  <Lock className="w-2.5 h-2.5" />
+                  <span>{isAr ? 'إجازة' : 'Off'}</span>
                 </span>
               </button>
             );
@@ -156,22 +177,23 @@ export function TeacherDatePicker({
               key={item.dateStr}
               type="button"
               onClick={() => onSelectDate(item.dateStr)}
-              className={`py-2.5 px-1 rounded-xl border text-center transition-all cursor-pointer flex flex-col items-center justify-center space-y-0.5 ${
+              className={`min-w-[85px] sm:min-w-0 flex-1 shrink-0 snap-start py-3 px-2 rounded-2xl border text-center transition-all cursor-pointer flex flex-col items-center justify-center space-y-1 ${
                 isSelected
-                  ? 'bg-emerald-800 text-white border-emerald-900 font-black shadow-md scale-[1.03] ring-2 ring-emerald-400'
-                  : 'bg-white border-slate-200 text-slate-800 font-bold hover:bg-emerald-50 hover:border-emerald-300'
+                  ? 'bg-emerald-800 text-white border-emerald-900 font-black shadow-md ring-2 ring-emerald-400 scale-[1.02]'
+                  : 'bg-white border-slate-200 text-slate-800 font-bold hover:bg-emerald-50 hover:border-emerald-300 shadow-2xs'
               }`}
             >
-              <span className={`text-[11px] font-mono font-black ${isSelected ? 'text-amber-300' : 'text-emerald-800'}`}>
-                {item.mmdd}
-              </span>
-              <span className={`text-[10px] font-extrabold ${isSelected ? 'text-white' : 'text-slate-900'}`}>
+              <span className={`text-xs font-black whitespace-nowrap ${isSelected ? 'text-white' : 'text-slate-900'}`}>
                 {item.dayNameAr}
               </span>
-              <span className={`text-[8px] font-black px-1 rounded-md ${
-                isSelected ? 'bg-amber-400 text-emerald-950' : 'bg-emerald-100 text-emerald-900'
+              <span className={`text-xs font-mono font-black ${isSelected ? 'text-amber-300' : 'text-emerald-900'}`}>
+                {item.mmdd}
+              </span>
+              <span className={`text-[9px] font-black px-2 py-0.5 rounded-md flex items-center gap-1 whitespace-nowrap ${
+                isSelected ? 'bg-amber-400 text-emerald-950 shadow-2xs' : 'bg-emerald-100 text-emerald-900'
               }`}>
-                {isAr ? 'متاح' : 'Available'}
+                {isSelected && <CheckCircle2 className="w-2.5 h-2.5 stroke-[3]" />}
+                <span>{isAr ? 'متاح' : 'Available'}</span>
               </span>
             </button>
           );

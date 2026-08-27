@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { useApp } from '@/context/AppContext';
 import { AvatarBadge } from '@/components/AvatarBadge';
 import { ClassCalendar } from '@/components/ClassCalendar';
+import { AuthGuard } from '@/components/AuthGuard';
 import { 
   GraduationCap, 
   Users, 
@@ -26,7 +27,7 @@ import {
   Building2
 } from 'lucide-react';
 
-export default function AdminTeacherDetailsPage() {
+function AdminTeacherDetailsContent() {
   const params = useParams();
   const router = useRouter();
   const teacherId = params.id as string;
@@ -429,5 +430,13 @@ export default function AdminTeacherDetailsPage() {
 
       </div>
     </div>
+  );
+}
+
+export default function AdminTeacherDetailsPage() {
+  return (
+    <AuthGuard allowedRoles={['ADMIN']}>
+      <AdminTeacherDetailsContent />
+    </AuthGuard>
   );
 }

@@ -3,13 +3,20 @@
 import React, { useState } from 'react';
 import { useApp } from '@/context/AppContext';
 import { Teacher, Lesson } from '@/types';
+import { formatTime12h } from '@/utils/timeFormat';
 import { 
   Clock, 
   Calendar, 
   AlertTriangle, 
   CheckCircle2, 
   X, 
-  Check
+  Check,
+  Plus,
+  Trash2,
+  Sliders,
+  Sun,
+  Sunrise,
+  Moon
 } from 'lucide-react';
 
 interface TeacherAvailabilityModalProps {
@@ -18,15 +25,43 @@ interface TeacherAvailabilityModalProps {
   teacher: Teacher;
 }
 
+export interface AvailabilityShift {
+  id: string;
+  nameAr: string;
+  nameEn: string;
+  start: string;
+  end: string;
+}
+
 const WEEKDAYS_AR = ['الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
 const WEEKDAYS_EN = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+const ALL_HOURS_OPTIONS = [
+  '05:00', '05:30', '06:00', '06:30', '07:00', '07:30', '08:00', '08:30', 
+  '09:00', '09:30', '10:00', '10:30', '11:00', '11:30', '12:00', '12:30', 
+  '13:00', '13:30', '14:00', '14:30', '15:00', '15:30', '16:00', '16:30', 
+  '17:00', '17:30', '18:00', '18:30', '19:00', '19:30', '20:00', '20:30', 
+  '21:00', '21:30', '22:00', '22:30', '23:00', '23:30'
+];
 
 export function TeacherAvailabilityModal({ isOpen, onClose, teacher }: TeacherAvailabilityModalProps) {
   const { language, lessons, updateTeacherAvailability, userAccounts, student } = useApp();
   const isAr = language === 'ar';
 
+  // Mode Selection: 'STANDARD' (Single Continuous Range) vs 'FLEXIBLE_SHIFTS' (Multiple Custom Shifts)
+  const [timingMode, setTimingMode] = useState<'STANDARD' | 'FLEXIBLE_SHIFTS'>('STANDARD');
+
+  // 1. Standard Mode state
   const [startHour, setStartHour] = useState(teacher.workingHoursStart || '12:00');
   const [endHour, setEndHour] = useState(teacher.workingHoursEnd || '18:00');
+
+  // 2. Flexible Multi-Shift state
+  const [customShifts, setCustomShifts] = useState<AvailabilityShift[]>([
+    { id: 'shift-1', nameAr: 'الفترة الصباحية', nameEn: 'Morning Shift', start: '06:00', end: '09:00' },
+    { id: 'shift-2', nameAr: 'فترة الظهيرة', nameEn: 'Noon Shift', start: '11:00', end: '15:00' },
+    { id: 'shift-3', nameAr: 'الفترة المسائية', nameEn: 'Evening Shift', start: '21:00', end: '23:00' }
+  ]);
+
   const [selectedDays, setSelectedDays] = useState<string[]>(
     teacher.workingDaysAr && teacher.workingDaysAr.length > 0
       ? teacher.workingDaysAr 
@@ -38,20 +73,82 @@ export function TeacherAvailabilityModal({ isOpen, onClose, teacher }: TeacherAv
 
   if (!isOpen) return null;
 
-  // Generate slots array based on start and end hours
-  const generateSlots = (start: string, end: string): string[] => {
-    const s = parseInt(start.split(':')[0], 10);
-    const e = parseInt(end.split(':')[0], 10);
+  // Generate slots array from a start and end time range (supports 30-min granularity)
+  const generateSlotsFromRange = (startStr: string, endStr: string): string[] => {
+    const parseTime = (timeStr: string) => {
+      const parts = timeStr.split(':');
+      return parseInt(parts[0], 10) * 60 + parseInt(parts[1] || '0', 10);
+    };
+
+    const startMin = parseTime(startStr);
+    const endMin = parseTime(endStr);
     const slots: string[] = [];
-    for (let h = s; h < e; h++) {
-      const pad = h < 10 ? `0${h}` : `${h}`;
-      slots.push(`${pad}:00`);
-      slots.push(`${pad}:30`);
+
+    if (startMin >= endMin) return slots;
+
+    for (let m = startMin; m < endMin; m += 30) {
+      const h = Math.floor(m / 60);
+      const min = m % 60;
+      const padH = h < 10 ? `0${h}` : `${h}`;
+      const padM = min === 0 ? '00' : `${min}`;
+      slots.push(`${padH}:${padM}`);
     }
     return slots;
   };
 
-  const proposedSlots = generateSlots(startHour, endHour);
+  // Generate proposed slots based on active mode
+  const getProposedSlots = (): { slots: string[]; minStart: string; maxEnd: string } => {
+    if (timingMode === 'STANDARD') {
+      const slots = generateSlotsFromRange(startHour, endHour);
+      return { slots, minStart: startHour, maxEnd: endHour };
+    }
+
+    // FLEXIBLE_SHIFTS mode: aggregate all shifts
+    const allSlotsSet = new Set<string>();
+    let minStart = '23:00';
+    let maxEnd = '00:00';
+
+    customShifts.forEach(shift => {
+      if (shift.start < minStart) minStart = shift.start;
+      if (shift.end > maxEnd) maxEnd = shift.end;
+
+      const shiftSlots = generateSlotsFromRange(shift.start, shift.end);
+      shiftSlots.forEach(s => allSlotsSet.add(s));
+    });
+
+    const sortedSlots = Array.from(allSlotsSet).sort();
+    return {
+      slots: sortedSlots,
+      minStart: sortedSlots.length > 0 ? minStart : '08:00',
+      maxEnd: sortedSlots.length > 0 ? maxEnd : '18:00'
+    };
+  };
+
+  const { slots: proposedSlots, minStart: computedStart, maxEnd: computedEnd } = getProposedSlots();
+
+  // Shift Management Functions
+  const addCustomShift = () => {
+    const newId = 'shift-' + Date.now();
+    setCustomShifts(prev => [
+      ...prev,
+      { 
+        id: newId, 
+        nameAr: `فترة إضافية ${prev.length + 1}`, 
+        nameEn: `Extra Shift ${prev.length + 1}`, 
+        start: '16:00', 
+        end: '19:00' 
+      }
+    ]);
+  };
+
+  const updateShift = (id: string, field: keyof AvailabilityShift, val: string) => {
+    setCustomShifts(prev => prev.map(s => s.id === id ? { ...s, [field]: val } : s));
+  };
+
+  const removeShift = (id: string) => {
+    if (customShifts.length <= 1) return; // Keep at least one shift
+    setCustomShifts(prev => prev.filter(s => s.id !== id));
+  };
 
   // Helper to extract Arabic day name from date string "YYYY-MM-DD"
   const getDayNameArFromDateStr = (dateStr: string): string => {
@@ -117,8 +214,8 @@ export function TeacherAvailabilityModal({ isOpen, onClose, teacher }: TeacherAv
     if (updateTeacherAvailability) {
       updateTeacherAvailability(
         teacher.id,
-        startHour,
-        endHour,
+        computedStart,
+        computedEnd,
         selectedDays,
         proposedSlots,
         resolutionOption
@@ -152,7 +249,7 @@ export function TeacherAvailabilityModal({ isOpen, onClose, teacher }: TeacherAv
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in">
-      <div className="bg-white rounded-3xl max-w-xl w-full p-6 sm:p-8 shadow-2xl border border-slate-100 space-y-6 relative max-h-[90vh] overflow-y-auto scrollbar-none">
+      <div className="bg-white rounded-3xl max-w-2xl w-full p-6 sm:p-8 shadow-2xl border border-slate-100 space-y-6 relative max-h-[90vh] overflow-y-auto scrollbar-none">
         
         {/* Header */}
         <div className="flex items-center justify-between border-b border-slate-100 pb-4">
@@ -162,10 +259,10 @@ export function TeacherAvailabilityModal({ isOpen, onClose, teacher }: TeacherAv
             </div>
             <div>
               <h3 className="font-black text-lg text-slate-900">
-                {isAr ? 'إدارة أيام وساعات العمل المتاحة للمعلم' : 'Manage Working Days & Hours Availability'}
+                {isAr ? 'إدارة أوقات وأيام العمل المتاحة للمعلم' : 'Manage Scholar Flexible Working Hours'}
               </h3>
               <p className="text-xs text-slate-500 font-semibold">
-                {isAr ? 'تحديد أيام الأسبوع وساعات التسميع ومعالجة الحصص المجدولة' : 'Configure active weekdays, daily hours, & resolve class conflicts'}
+                {isAr ? 'تخصيص الفترات الصباحية والمسائية وأيام التسميع الأسبوعية' : 'Configure custom shift timings (Morning, Afternoon, Evening) and weekdays'}
               </p>
             </div>
           </div>
@@ -220,45 +317,178 @@ export function TeacherAvailabilityModal({ isOpen, onClose, teacher }: TeacherAv
               </div>
             </div>
 
-            {/* Working Hours Time Range Inputs */}
-            <div className="space-y-3 bg-slate-50 p-4 rounded-2xl border border-slate-200">
-              <label className="font-extrabold text-slate-900 block text-sm flex items-center gap-2">
-                <Clock className="w-4 h-4 text-emerald-700" />
-                <span>{isAr ? 'حدد نطاق ساعات الدوام اليومية:' : 'Set Daily Working Hours Range:'}</span>
-              </label>
-              
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-1">
-                  <span className="text-slate-600 font-bold block">{isAr ? 'بداية الدوام اليومي:' : 'Start Time:'}</span>
-                  <select
-                    value={startHour}
-                    onChange={(e) => setStartHour(e.target.value)}
-                    className="w-full p-3 rounded-xl border border-slate-300 bg-white font-mono text-xs font-bold text-slate-900 focus:border-emerald-600 cursor-pointer"
-                  >
-                    {['08:00', '09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '16:00'].map(h => (
-                      <option key={h} value={h}>{h}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="space-y-1">
-                  <span className="text-slate-600 font-bold block">{isAr ? 'نهاية الدوام اليومي:' : 'End Time:'}</span>
-                  <select
-                    value={endHour}
-                    onChange={(e) => setEndHour(e.target.value)}
-                    className="w-full p-3 rounded-xl border border-slate-300 bg-white font-mono text-xs font-bold text-slate-900 focus:border-emerald-600 cursor-pointer"
-                  >
-                    {['16:00', '17:00', '18:00', '19:00', '20:00', '21:00', '22:00'].map(h => (
-                      <option key={h} value={h}>{h}</option>
-                    ))}
-                  </select>
-                </div>
+            {/* TIMING MODE SELECTOR TABS */}
+            <div className="space-y-3 bg-slate-50 p-4.5 rounded-2xl border border-slate-200">
+              <div className="flex items-center justify-between">
+                <label className="font-extrabold text-slate-900 block text-sm flex items-center gap-2">
+                  <Clock className="w-4 h-4 text-emerald-700" />
+                  <span>{isAr ? 'نظام تحديد أوقات الدوام اليومي:' : 'Daily Schedule Timing Mode:'}</span>
+                </label>
               </div>
 
-              <div className="text-[11px] text-slate-500 font-medium pt-1">
-                {isAr 
-                  ? `الساعات المتاحة المستخرجة (${proposedSlots.length} أوقات): ${proposedSlots.join(' • ')}`
-                  : `Calculated slots (${proposedSlots.length}): ${proposedSlots.join(' • ')}`}
+              {/* Mode Toggle Buttons */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 bg-white p-1 rounded-2xl border border-slate-200">
+                <button
+                  type="button"
+                  onClick={() => setTimingMode('STANDARD')}
+                  className={`p-3 rounded-xl font-extrabold text-xs transition-all flex items-center justify-center gap-2 cursor-pointer ${
+                    timingMode === 'STANDARD'
+                      ? 'emerald-gradient-bg text-white shadow-xs'
+                      : 'text-slate-600 hover:bg-slate-100'
+                  }`}
+                >
+                  <Clock className="w-4 h-4" />
+                  <span>{isAr ? 'دوام موحّد (نطاق زمني مستمر)' : 'Continuous Time Range'}</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setTimingMode('FLEXIBLE_SHIFTS')}
+                  className={`p-3 rounded-xl font-extrabold text-xs transition-all flex items-center justify-center gap-2 cursor-pointer ${
+                    timingMode === 'FLEXIBLE_SHIFTS'
+                      ? 'emerald-gradient-bg text-white shadow-xs'
+                      : 'text-slate-600 hover:bg-slate-100'
+                  }`}
+                >
+                  <Sliders className="w-4 h-4 text-amber-300" />
+                  <span>{isAr ? 'فترات دوام متعددة ومخصصة (مرن)' : 'Multiple Flexible Shifts (Custom)'}</span>
+                </button>
+              </div>
+
+              {/* STANDARD MODE INPUTS */}
+              {timingMode === 'STANDARD' && (
+                <div className="pt-3 space-y-3 animate-fade-in">
+                  <p className="text-[11px] text-slate-500 font-medium">
+                    {isAr 
+                      ? 'اختر وقت بداية ونهاية الدوام اليومي المستمر (مثل: من 12:00 ظهراً إلى 06:00 مساءً):' 
+                      : 'Choose continuous daily start and end working hours:'}
+                  </p>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-1">
+                      <span className="text-slate-600 font-bold block">{isAr ? 'بداية الدوام:' : 'Start Time:'}</span>
+                      <select
+                        value={startHour}
+                        onChange={(e) => setStartHour(e.target.value)}
+                        className="w-full p-3 rounded-xl border border-slate-300 bg-white font-mono text-xs font-bold text-slate-900 focus:border-emerald-600 cursor-pointer"
+                      >
+                        {ALL_HOURS_OPTIONS.map(h => (
+                          <option key={h} value={h}>{formatTime12h(h, isAr)}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="space-y-1">
+                      <span className="text-slate-600 font-bold block">{isAr ? 'نهاية الدوام:' : 'End Time:'}</span>
+                      <select
+                        value={endHour}
+                        onChange={(e) => setEndHour(e.target.value)}
+                        className="w-full p-3 rounded-xl border border-slate-300 bg-white font-mono text-xs font-bold text-slate-900 focus:border-emerald-600 cursor-pointer"
+                      >
+                        {ALL_HOURS_OPTIONS.map(h => (
+                          <option key={h} value={h}>{formatTime12h(h, isAr)}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* FLEXIBLE MULTI-SHIFT MODE INPUTS */}
+              {timingMode === 'FLEXIBLE_SHIFTS' && (
+                <div className="pt-3 space-y-4 animate-fade-in">
+                  <div className="flex items-center justify-between">
+                    <p className="text-[11px] text-slate-600 font-semibold leading-relaxed">
+                      {isAr 
+                        ? 'يمكنك تحديد فترات عمل متفرقة خلال اليوم (مثل: صباحاً من 6-9، ظهراً من 11-3، ومساءً من 9-11):' 
+                        : 'Specify multiple non-contiguous working shifts during the day:'}
+                    </p>
+
+                    <button
+                      type="button"
+                      onClick={addCustomShift}
+                      className="px-3 py-1.5 rounded-xl gold-gradient-bg text-emerald-950 font-black text-xs shadow-xs hover:brightness-105 transition-all flex items-center gap-1 cursor-pointer shrink-0"
+                    >
+                      <Plus className="w-3.5 h-3.5 stroke-[3]" />
+                      <span>{isAr ? '+ إضافة فترة عمل' : '+ Add Shift'}</span>
+                    </button>
+                  </div>
+
+                  {/* Shifts List */}
+                  <div className="space-y-2.5">
+                    {customShifts.map((shift, idx) => (
+                      <div 
+                        key={shift.id} 
+                        className="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-2xs space-y-2 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                      >
+                        {/* Shift Title */}
+                        <div className="flex items-center gap-2 font-bold text-slate-800 min-w-[150px]">
+                          {idx === 0 ? <Sunrise className="w-4 h-4 text-amber-500 shrink-0" /> : idx === 1 ? <Sun className="w-4 h-4 text-emerald-600 shrink-0" /> : <Moon className="w-4 h-4 text-indigo-500 shrink-0" />}
+                          <input
+                            type="text"
+                            value={isAr ? shift.nameAr : shift.nameEn}
+                            onChange={(e) => updateShift(shift.id, isAr ? 'nameAr' : 'nameEn', e.target.value)}
+                            placeholder={isAr ? 'اسم الفترة' : 'Shift Name'}
+                            className="bg-slate-50 border border-slate-200 px-2.5 py-1.5 rounded-lg text-xs font-bold text-slate-900 w-full focus:ring-1 focus:ring-emerald-500"
+                          />
+                        </div>
+
+                        {/* Shift Start & End Dropdowns */}
+                        <div className="flex items-center gap-2 flex-1 justify-end">
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-[11px] text-slate-500 font-semibold">{isAr ? 'من:' : 'From:'}</span>
+                            <select
+                              value={shift.start}
+                              onChange={(e) => updateShift(shift.id, 'start', e.target.value)}
+                              className="bg-slate-50 border border-slate-200 px-2.5 py-1.5 rounded-xl font-mono text-xs font-extrabold text-slate-900 cursor-pointer"
+                            >
+                              {ALL_HOURS_OPTIONS.map(h => (
+                                <option key={h} value={h}>{formatTime12h(h, isAr)}</option>
+                              ))}
+                            </select>
+                          </div>
+
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-[11px] text-slate-500 font-semibold">{isAr ? 'إلى:' : 'To:'}</span>
+                            <select
+                              value={shift.end}
+                              onChange={(e) => updateShift(shift.id, 'end', e.target.value)}
+                              className="bg-slate-50 border border-slate-200 px-2.5 py-1.5 rounded-xl font-mono text-xs font-extrabold text-slate-900 cursor-pointer"
+                            >
+                              {ALL_HOURS_OPTIONS.map(h => (
+                                <option key={h} value={h}>{formatTime12h(h, isAr)}</option>
+                              ))}
+                            </select>
+                          </div>
+
+                          {/* Remove Shift Button */}
+                          {customShifts.length > 1 && (
+                            <button
+                              type="button"
+                              onClick={() => removeShift(shift.id)}
+                              className="p-2 rounded-xl text-rose-500 hover:bg-rose-50 hover:text-rose-700 transition-colors cursor-pointer mr-1"
+                              title={isAr ? 'حذف الفترة' : 'Remove Shift'}
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Slots Summary Preview */}
+              <div className="bg-emerald-50/80 p-3.5 rounded-2xl border border-emerald-200/80 text-[11px] text-emerald-950 font-medium space-y-1">
+                <span className="font-extrabold block text-emerald-900">
+                  {isAr 
+                    ? `إجمالي الساعات المتاحة المستخرجة للطلاب (${proposedSlots.length} أوقات):` 
+                    : `Total Available Slots Combined (${proposedSlots.length} slots):`}
+                </span>
+                <p className="font-mono font-bold text-emerald-900 leading-relaxed">
+                  {proposedSlots.length > 0 ? proposedSlots.map(s => formatTime12h(s, isAr)).join(' • ') : (isAr ? 'يرجى تحديد أوقات عمل صالحة' : 'No slots generated')}
+                </p>
               </div>
             </div>
 
@@ -277,7 +507,7 @@ export function TeacherAvailabilityModal({ isOpen, onClose, teacher }: TeacherAv
                   </div>
                 </div>
 
-                {/* Conflicting Lessons List Preview (With 100% Guaranteed Student Name Display) */}
+                {/* Conflicting Lessons List Preview */}
                 <div className="bg-white/80 p-3 rounded-xl border border-amber-200 space-y-1.5 text-[11px]">
                   <span className="font-bold text-slate-700 block mb-1">{isAr ? 'الحصص المتأثرة بالتعديل:' : 'Affected Classes:'}</span>
                   {conflictingLessons.map(l => (

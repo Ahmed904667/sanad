@@ -81,6 +81,8 @@ export interface Teacher {
   nameAr: string;
   nameEn: string;
   email: string;
+  phone?: string;
+  birthDate?: string;
   titleAr: string;
   titleEn: string;
   rating: number;
@@ -120,6 +122,7 @@ export interface StudentProfile {
   nameEn: string;
   email: string;
   phone?: string;
+  birthDate?: string;
   gender?: 'MALE' | 'FEMALE';
   verificationStatus: VerificationStatus;
   activePlanId: string | null;
