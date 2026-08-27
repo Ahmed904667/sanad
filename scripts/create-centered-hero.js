@@ -1,26 +1,63 @@
 const sharp = require('sharp');
 const path = require('path');
-const fs = require('fs');
 
-async function createPopoutClippedComposition() {
+async function createPerfectLargePopoutMan() {
   const dir = path.join(process.cwd(), 'public', 'images');
+  const originalPath = path.join(dir, 'quran-reader.jpg');
   
-  // Canvas Dimensions
+  // 1. Process original FULL-BODY image to make full transparent cutout of the man
+  console.log('1. Processing original image with full thobe length...');
+  const image = sharp(originalPath);
+  const metadata = await image.metadata();
+  console.log('Original dimensions:', metadata.width, metadata.height);
+  
+  // Extract from top down to ~85% (covering full torso, knees/thobe)
+  const extractHeight = Math.round(metadata.height * 0.88);
+  const extracted = await sharp(originalPath)
+    .extract({ left: 0, top: 0, width: metadata.width, height: extractHeight })
+    .ensureAlpha()
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+    
+  const { data, info } = extracted;
+  const { width, height, channels } = info;
+  
+  // Clean background removal
+  for (let i = 0; i < data.length; i += channels) {
+    const r = data[i];
+    const g = data[i + 1];
+    const b = data[i + 2];
+    const brightness = (r + g + b) / 3;
+    const maxDiff = Math.max(Math.abs(r - g), Math.abs(g - b), Math.abs(r - b));
+    
+    // Background is clean white/studio light (brightness > 240, low saturation)
+    if (brightness > 240 && maxDiff < 12) {
+      const alpha = Math.max(0, Math.min(255, (255 - brightness) * 16));
+      data[i + 3] = alpha;
+    }
+  }
+  
+  const fullManCutout = await sharp(data, { raw: { width, height, channels } })
+    .png()
+    .toBuffer();
+    
+  console.log('Full man cutout created successfully.');
+  
+  // 2. Canvas & Circle Geometry
   const canvasWidth = 600;
   const canvasHeight = 650;
-  
-  const circleRadius = 225;
   const circleCenterX = 300;
   const circleCenterY = 330;
+  const circleRadius = 225; // Circle spans from y = 105 to y = 555
   
-  // 1. Background SVG with Contour lines + Emerald Gradient Circle + Drop shadow
+  // 3. Background SVG with Contour lines & Emerald Gradient Circle
   const svgBackground = `
   <svg width="${canvasWidth}" height="${canvasHeight}" viewBox="0 0 ${canvasWidth} ${canvasHeight}" xmlns="http://www.w3.org/2000/svg">
     <defs>
       <linearGradient id="emeraldGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-        <stop offset="0%" stop-color="#059669" />
-        <stop offset="50%" stop-color="#047857" />
-        <stop offset="100%" stop-color="#0f766e" />
+        <stop offset="0%" stop-color="#00a86b" />
+        <stop offset="50%" stop-color="#059669" />
+        <stop offset="100%" stop-color="#047857" />
       </linearGradient>
       <filter id="dropShadow" x="-20%" y="-20%" width="140%" height="140%">
         <feDropShadow dx="0" dy="14" stdDeviation="18" flood-color="#047857" flood-opacity="0.3" />
@@ -38,24 +75,21 @@ async function createPopoutClippedComposition() {
   
   const bgBuffer = await sharp(Buffer.from(svgBackground)).png().toBuffer();
   
-  // 2. Load the man cutout image and make him BIGGER
-  const manPath = path.join(dir, 'quran-reader-cutout.png');
-  
-  // Resize the man to be larger (e.g. width: 490px)
-  const resizedManBuffer = await sharp(manPath)
-    .resize({ width: 490 })
+  // 4. Resize man to be MUCH BIGGER (width: 530px) and long enough to extend past the bottom of the circle (y > 555)
+  const resizedManBuffer = await sharp(fullManCutout)
+    .resize({ width: 530 })
     .toBuffer();
     
   const manMeta = await sharp(resizedManBuffer).metadata();
-  console.log('Resized man dimensions:', manMeta.width, manMeta.height);
+  console.log('Scaled Man Dimensions:', manMeta.width, 'x', manMeta.height);
   
-  // Position man on a 600x650 transparent canvas
+  // Position man on canvas:
+  // Horizontally centered: left = (600 - 530) / 2 = 35
   const left = Math.round((canvasWidth - manMeta.width) / 2);
-  // Head pops out nicely above the circle top (circle top is 330 - 225 = 105)
-  // Let top = 50 so head extends proudly above the circle
-  const top = 50;
+  // Vertically: head at top y = 45 (extends 60px above circle top at y=105)
+  // Man height is ~ 700px, so bottom extends to y = 45 + ~700 = 745px, WELL BEYOND the circle bottom (y=555)!
+  const top = 45;
   
-  // Place man on full transparent 600x650 canvas
   const manOnCanvas = await sharp({
     create: {
       width: canvasWidth,
@@ -74,14 +108,12 @@ async function createPopoutClippedComposition() {
   .png()
   .toBuffer();
   
-  // 3. Create Pop-out mask:
-  // - Top rectangle allows head/shoulders to pop out above the circle
-  // - Bottom half is masked strictly by the circle border (so the bottom is cut in the exact circle curve)
+  // 5. MASK: Top is open (allows head to pop out), bottom is strictly clipped to circle radius 225 at center (300, 330)
   const svgMask = `
   <svg width="${canvasWidth}" height="${canvasHeight}" viewBox="0 0 ${canvasWidth} ${canvasHeight}" xmlns="http://www.w3.org/2000/svg">
-    <!-- Top area open for head popout -->
+    <!-- Top is fully open for head/shoulders popout -->
     <rect x="0" y="0" width="${canvasWidth}" height="${circleCenterY}" fill="white" />
-    <!-- Bottom area strictly constrained to the circle radius -->
+    <!-- Bottom is strictly the circle curve -->
     <circle cx="${circleCenterX}" cy="${circleCenterY}" r="${circleRadius}" fill="white" />
   </svg>`;
   
@@ -89,7 +121,7 @@ async function createPopoutClippedComposition() {
     .toColourspace('b-w')
     .toBuffer();
     
-  // Apply mask to the man using dest-in blend mode
+  // Mask the man
   const maskedMan = await sharp(manOnCanvas)
     .composite([
       {
@@ -100,7 +132,8 @@ async function createPopoutClippedComposition() {
     .png()
     .toBuffer();
     
-  // 4. Composite the masked man onto the emerald background
+  // 6. Composite masked man onto emerald background
+  const outputPath = path.join(dir, 'hero-quran-man-centered.png');
   await sharp(bgBuffer)
     .composite([
       {
@@ -110,9 +143,9 @@ async function createPopoutClippedComposition() {
       }
     ])
     .png()
-    .toFile(path.join(dir, 'hero-quran-man-centered.png'));
+    .toFile(outputPath);
     
-  console.log('Successfully generated bigger man with curved bottom cut along circle border!');
+  console.log('SUCCESS! Generated big man filling circle with bottom perfectly curved along circle border at:', outputPath);
 }
 
-createPopoutClippedComposition().catch(console.error);
+createPerfectLargePopoutMan().catch(console.error);
