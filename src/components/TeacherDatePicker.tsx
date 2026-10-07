@@ -19,6 +19,11 @@ export function TeacherDatePicker({
 }: TeacherDatePickerProps) {
   // Offset in weeks from current week (0 = current week starting from tomorrow, 1 = next week, etc.)
   const [weekOffset, setWeekOffset] = useState(0);
+  const [minimumDate] = useState(() => {
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    return tomorrow.toISOString().split('T')[0];
+  });
 
   // Generate 7 days for the active week view
   const weekDays = useMemo(() => {
@@ -106,7 +111,7 @@ export function TeacherDatePicker({
           <input
             type="date"
             value={selectedDate}
-            min={new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().split('T')[0]}
+            min={minimumDate}
             onChange={(e) => {
               if (e.target.value) onSelectDate(e.target.value);
             }}

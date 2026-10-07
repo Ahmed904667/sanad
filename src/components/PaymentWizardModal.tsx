@@ -1,9 +1,12 @@
 'use client';
 
+import { AccessibleModal } from './AccessibleModal';
+
 import React, { useState } from 'react';
 import { SubscriptionPlan, Teacher } from '../types';
 import { useApp } from '../context/AppContext';
-import { X, Building2, Upload, FileText, CheckCircle2, ShieldCheck, Copy, Sparkles, AlertCircle } from 'lucide-react';
+import { receiptFileToDataUrl } from '../lib/receiptFile';
+import { X, Building2, Upload, CheckCircle2, Copy, AlertCircle } from 'lucide-react';
 
 interface PaymentWizardModalProps {
   plan: SubscriptionPlan | null;
@@ -15,10 +18,13 @@ export const PaymentWizardModal: React.FC<PaymentWizardModalProps> = ({ plan, te
   const { language, bankInfo, submitPaymentReceipt } = useApp();
   const isAr = language === 'ar';
 
-  const [receiptFileName, setReceiptFileName] = useState<string | null>(null);
+  const [receiptFile, setReceiptFile] = useState<File | null>(null);
+  const [error, setError] = useState('');
   const [bankRef, setBankRef] = useState('');
   const [copiedField, setCopiedField] = useState<string | null>(null);
   const [isSubmitted, setIsSubmitted] = useState(false);
+
+  const [saving, setSaving] = useState(false);
 
   if (!plan || !teacher) return null;
 
@@ -30,18 +36,26 @@ export const PaymentWizardModal: React.FC<PaymentWizardModalProps> = ({ plan, te
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
-      setReceiptFileName(e.target.files[0].name);
+      setReceiptFile(e.target.files[0]);
+      setError('');
     }
   };
 
-  const handleSubmitReceipt = (e: React.FormEvent) => {
+  const handleSubmitReceipt = async (e: React.FormEvent) => {
     e.preventDefault();
-    submitPaymentReceipt(plan.id, teacher.id, receiptFileName || 'إيصال_تحويل_مصرف_الراجحي.png', bankRef);
-    setIsSubmitted(true);
+    if (!receiptFile || saving) return;
+    setSaving(true);
+    try {
+      const receiptDataUrl = await receiptFileToDataUrl(receiptFile);
+      await submitPaymentReceipt(plan.id, teacher.id, receiptDataUrl, bankRef);
+      setIsSubmitted(true);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Could not upload receipt.');
+    } finally { setSaving(false); }
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/65 backdrop-blur-sm">
+    <AccessibleModal onClose={onClose} aria-label={isAr ? "إرسال إيصال الدفع" : "Submit payment receipt"} className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/65 backdrop-blur-sm">
       <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-slate-100 relative max-h-[92vh] overflow-y-auto">
         <button
           onClick={onClose}
@@ -121,19 +135,21 @@ export const PaymentWizardModal: React.FC<PaymentWizardModalProps> = ({ plan, te
                 <div className="border-2 border-dashed border-emerald-300 hover:border-emerald-500 rounded-2xl p-4 text-center bg-emerald-50/40 transition-colors relative cursor-pointer">
                   <input
                     type="file"
-                    accept="image/*,.pdf"
+                    accept="image/jpeg,image/png,image/webp,application/pdf,.jpg,.jpeg,.png,.webp,.pdf"
                     onChange={handleFileUpload}
                     className="absolute inset-0 opacity-0 cursor-pointer"
                   />
                   <Upload className="w-8 h-8 text-emerald-600 mx-auto mb-2" />
                   <span className="text-xs font-extrabold text-emerald-950 block">
-                    {receiptFileName ? receiptFileName : (isAr ? 'اضغط هنا لرفع صور الإيصال' : 'Click to select receipt image')}
+                    {receiptFile ? receiptFile.name : (isAr ? 'اضغط هنا لرفع صورة الإيصال أو ملف PDF' : 'Choose a receipt image or PDF')}
                   </span>
                   <span className="text-[10px] text-slate-500 mt-1 block">
-                    PNG, JPG, PDF (Max 10MB)
+                    PNG, JPG, WebP, PDF (Max 5 MB)
                   </span>
                 </div>
               </div>
+
+              {error && <p role="alert" className="text-sm text-red-700">{error}</p>}
 
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1.5">
@@ -149,16 +165,15 @@ export const PaymentWizardModal: React.FC<PaymentWizardModalProps> = ({ plan, te
               </div>
 
               <button
-                type="submit"
-                disabled={!receiptFileName}
+                type="submit" disabled={saving || !receiptFile}
                 className={`w-full py-3.5 rounded-2xl font-extrabold text-xs shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer ${
-                  receiptFileName
+                  receiptFile
                     ? 'gold-gradient-bg text-emerald-950 hover:brightness-105'
                     : 'bg-slate-200 text-slate-400 cursor-not-allowed'
                 }`}
               >
                 <CheckCircle2 className="w-4 h-4" />
-                <span>{isAr ? 'إرسال الإيصال واعتماد الطلب' : 'Submit Receipt for Teacher Verification'}</span>
+                <span>{isAr ? 'إرسال الإيصال واعتماد الطلب' : 'Submit receipt for admin review'}</span>
               </button>
             </form>
           </div>
@@ -174,8 +189,8 @@ export const PaymentWizardModal: React.FC<PaymentWizardModalProps> = ({ plan, te
             </h3>
 
             <p className="text-xs text-slate-600 leading-relaxed max-w-sm mx-auto">
-              {isAr 
-                ? `طلبك الآن قيد الاعتماد لدى ${teacher.nameAr}. فور تأكيد الإيصال سيتم تحويل حسابك إلى مفعل وتوليد حصص الشهر تلقائياً بدون تعارض.` 
+              {isAr
+                ? `طلبك الآن قيد الاعتماد لدى ${teacher.nameAr}. فور تأكيد الإيصال سيتم تحويل حسابك إلى مفعل وتوليد حصص الشهر تلقائياً بدون تعارض.`
                 : `Your receipt is pending teacher verification by ${teacher.nameEn}. Upon approval, your classes will be scheduled automatically.`}
             </p>
 
@@ -193,6 +208,6 @@ export const PaymentWizardModal: React.FC<PaymentWizardModalProps> = ({ plan, te
           </div>
         )}
       </div>
-    </div>
+    </AccessibleModal>
   );
 };

@@ -1,10 +1,14 @@
 'use client';
 
-import React, { useState } from 'react';
+import { AccessibleModal } from './AccessibleModal';
+
+import React, { useEffect, useState } from 'react';
 import { Teacher } from '../types';
 import { useApp } from '../context/AppContext';
-import { X, Calendar, Clock, Video, CheckCircle2, AlertCircle, Sparkles, ExternalLink } from 'lucide-react';
+import { X, Calendar, Clock, Video, CheckCircle2, Sparkles } from 'lucide-react';
 import { formatTime12h } from '../utils/timeFormat';
+import { getTeacherAvailableSlots, lessonTimeRange, timeRangesOverlap } from '../utils/availability';
+import { getDayNameArFromDate } from '@/data/quranData';
 
 interface BookingModalProps {
   teacher: Teacher | null;
@@ -12,48 +16,96 @@ interface BookingModalProps {
 }
 
 export const BookingModal: React.FC<BookingModalProps> = ({ teacher, onClose }) => {
-  const { language, student, bookLesson, plans } = useApp();
+  const { language, student, bookLesson, plans, lessons } = useApp();
   const isAr = language === 'ar';
 
-  const todayStr = new Date().toISOString().split('T')[0];
+  const now = new Date();
+  const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
   const [selectedDate, setSelectedDate] = useState(todayStr);
+  const [availabilityResult, setAvailabilityResult] = useState<{ key: string; occupied: { date: string; time: string; durationMinutes: number }[]; error?: string }>({ key: '', occupied: [] });
+  const teacherId = teacher?.id;
+  const availabilityKey = `${teacherId || ''}:${selectedDate}`;
+  const hasFreshAvailability = availabilityResult.key === availabilityKey && !availabilityResult.error;
+  const isLoadingAvailability = availabilityResult.key !== availabilityKey;
+  const availabilityError = availabilityResult.key === availabilityKey ? availabilityResult.error || '' : '';
+  const occupiedLessons = hasFreshAvailability ? availabilityResult.occupied : [];
 
-  const startHour = parseInt((teacher?.workingHoursStart || '12:00').split(':')[0], 10);
-  const endHour = parseInt((teacher?.workingHoursEnd || '18:00').split(':')[0], 10);
-
-  const availableSlotsList: { rawSlot: string; formattedText: string; isBooked: boolean }[] = [];
-  for (let h = startHour; h <= endHour; h++) {
-    const slotStr = `${h.toString().padStart(2, '0')}:00`;
-    const isBooked = teacher?.bookedTimeSlots?.includes(slotStr) ?? false;
-    availableSlotsList.push({
-      rawSlot: slotStr,
-      formattedText: formatTime12h(slotStr, isAr),
-      isBooked
+  useEffect(() => {
+    if (!teacherId) return;
+    const controller = new AbortController();
+    fetch(`/api/teachers/availability?teacherId=${encodeURIComponent(teacherId)}&from=${selectedDate}&to=${selectedDate}`, {
+      cache: 'no-store',
+      signal: controller.signal,
+    }).then(async response => {
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || 'Unable to load availability.');
+      setAvailabilityResult({ key: availabilityKey, occupied: Array.isArray(result.occupied) ? result.occupied : [] });
+    }).catch(error => {
+      if (error instanceof DOMException && error.name === 'AbortError') return;
+      setAvailabilityResult({
+        key: availabilityKey,
+        occupied: [],
+        error: isAr ? 'تعذر تحميل الحجوزات الحالية. حاول تحديث اليوم.' : 'Could not load current bookings. Try refreshing the date.',
+      });
     });
-  }
+    return () => controller.abort();
+  }, [teacherId, selectedDate, availabilityKey, isAr]);
 
-  const firstAvailable = availableSlotsList.find(s => !s.isBooked)?.rawSlot || '12:00';
-  const [selectedTime, setSelectedTime] = useState(firstAvailable);
+  const activePlan = plans.find(p => p.id === student.activePlanId) || plans[0];
+  const durationMinutes = activePlan?.lessonDurationMinutes || 5;
+  const day = getDayNameArFromDate(selectedDate);
+  const rawSlots = teacher ? getTeacherAvailableSlots(teacher, day, durationMinutes) : [];
+  const availableSlotsList = rawSlots.map(rawSlot => ({
+    rawSlot,
+    formattedText: formatTime12h(rawSlot, isAr),
+    isBooked: isLoadingAvailability || !hasFreshAvailability || Boolean(availabilityError) || occupiedLessons.some(lesson => {
+      if (lesson.date !== selectedDate) return false;
+      const candidate = lessonTimeRange(rawSlot, durationMinutes);
+      const booked = lessonTimeRange(lesson.time, lesson.durationMinutes || durationMinutes);
+      return Boolean(candidate && booked && timeRangesOverlap(candidate, booked));
+    }) || lessons.some(lesson => {
+      if (!teacher || lesson.teacherId !== teacher.id || lesson.date !== selectedDate || lesson.status !== 'SCHEDULED') return false;
+      const candidate = lessonTimeRange(rawSlot, durationMinutes);
+      const booked = lessonTimeRange(lesson.time, lesson.durationMinutes || durationMinutes);
+      return Boolean(candidate && booked && timeRangesOverlap(candidate, booked));
+    }),
+  }));
+
+  const firstAvailable = availableSlotsList.find(s => !s.isBooked)?.rawSlot || '';
+  const [selectedTime, setSelectedTime] = useState('');
+  const activeSelectedTime = availableSlotsList.some(slot => slot.rawSlot === selectedTime && !slot.isBooked)
+    ? selectedTime
+    : firstAvailable;
   const [isSuccess, setIsSuccess] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [bookingError, setBookingError] = useState('');
 
   if (!teacher) return null;
 
-  const activePlan = plans.find(p => p.id === student.activePlanId) || plans[1];
-
-  const handleConfirmBooking = (e: React.FormEvent) => {
+  const handleConfirmBooking = async (e: React.FormEvent) => {
     e.preventDefault();
-    const slotObj = availableSlotsList.find(s => s.rawSlot === selectedTime) || availableSlotsList[0];
-    const timeFormatted = slotObj ? `${selectedTime} (${slotObj.formattedText})` : selectedTime;
-    bookLesson(teacher.id, selectedDate, timeFormatted);
+    if (!activeSelectedTime) {
+      setBookingError(isAr ? 'لا يوجد موعد متاح لهذا اليوم. اختر يوماً آخر.' : 'No available times on this day. Choose another date.');
+      return;
+    }
+    setIsSubmitting(true);
+    setBookingError('');
+    const saved = await bookLesson(teacher.id, selectedDate, activeSelectedTime);
+    setIsSubmitting(false);
+    if (!saved) {
+      setBookingError(isAr ? 'تعذر حجز هذا الموعد. ربما حجزه شخص آخر؛ حدّث الصفحة واختر وقتاً آخر.' : 'Could not book this time. It may have just been taken; refresh and choose another.');
+      return;
+    }
     setIsSuccess(true);
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in">
-      <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-slate-100 relative overflow-hidden">
+    <AccessibleModal onClose={onClose} aria-label={isAr ? "حجز حصة" : "Book a class"} className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in">
+      <div aria-labelledby="booking-modal-title" className="bg-white rounded-3xl max-w-lg w-full max-h-[92vh] overflow-y-auto p-6 shadow-2xl border border-slate-100 relative">
         {/* Close Button */}
         <button
           onClick={onClose}
+          aria-label={isAr ? 'إغلاق نافذة الحجز' : 'Close booking dialog'}
           className="absolute top-4 left-4 text-slate-400 hover:text-slate-700 p-2 rounded-full hover:bg-slate-100 transition-colors"
         >
           <X className="w-5 h-5" />
@@ -67,7 +119,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({ teacher, onClose }) 
                 <Calendar className="w-6 h-6" />
               </div>
               <div>
-                <h3 className="font-extrabold text-xl text-emerald-950">
+                <h3 id="booking-modal-title" className="font-extrabold text-xl text-emerald-950">
                   {isAr ? 'حجز حصة قرأنية جديدة' : 'Book a New Lesson'}
                 </h3>
                 <p className="text-xs text-slate-500 font-medium">
@@ -99,8 +151,12 @@ export const BookingModal: React.FC<BookingModalProps> = ({ teacher, onClose }) 
                 <input
                   type="date"
                   value={selectedDate}
-                  min={new Date().toISOString().split('T')[0]}
-                  onChange={(e) => setSelectedDate(e.target.value)}
+                  min={todayStr}
+                  onChange={(e) => {
+                    setSelectedDate(e.target.value);
+                    setSelectedTime('');
+                    setBookingError('');
+                  }}
                   required
                   className="w-full px-4 py-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 text-sm font-semibold text-slate-800"
                 />
@@ -111,9 +167,9 @@ export const BookingModal: React.FC<BookingModalProps> = ({ teacher, onClose }) 
                 <label className="block text-xs font-bold text-slate-700 mb-1.5">
                   {isAr ? 'اختر الوقت المفضل من ساعات عمل المعلم المتاحة:' : 'Select Available Time Slot:'}
                 </label>
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                  <div className="grid max-h-56 grid-cols-2 gap-2 overflow-y-auto rounded-xl p-1 sm:grid-cols-3" aria-label={isAr ? 'الأوقات المتاحة' : 'Available time slots'}>
                   {availableSlotsList.map((slot) => {
-                    const isSelected = selectedTime === slot.rawSlot;
+                    const isSelected = activeSelectedTime === slot.rawSlot;
 
                     if (slot.isBooked) {
                       return (
@@ -131,6 +187,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({ teacher, onClose }) 
                       <button
                         key={slot.rawSlot}
                         type="button"
+                        aria-pressed={isSelected}
                         onClick={() => setSelectedTime(slot.rawSlot)}
                         className={`p-2.5 rounded-xl text-xs font-bold border transition-all flex flex-col items-center justify-center gap-1 cursor-pointer ${
                           isSelected
@@ -147,6 +204,11 @@ export const BookingModal: React.FC<BookingModalProps> = ({ teacher, onClose }) 
                   })}
                 </div>
               </div>
+
+              {(isLoadingAvailability || !hasFreshAvailability) && !availabilityError && <p role="status" className="text-sm text-slate-500">{isAr ? 'جارٍ التحقق من الحجوزات…' : 'Checking existing bookings…'}</p>}
+              {availabilityError && <p role="alert" className="text-sm font-medium text-red-700">{availabilityError}</p>}
+              {availableSlotsList.length === 0 && <p className="text-sm text-slate-500">{isAr ? 'لا توجد أوقات متاحة لهذا اليوم.' : 'No availability on this day.'}</p>}
+              {bookingError && <p role="alert" className="text-sm font-medium text-red-700">{bookingError}</p>}
 
               {/* Class Info Box */}
               <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 text-xs space-y-2">
@@ -166,10 +228,11 @@ export const BookingModal: React.FC<BookingModalProps> = ({ teacher, onClose }) 
               {/* Submit Button */}
               <button
                 type="submit"
-                className="w-full py-3.5 rounded-2xl emerald-gradient-bg text-white font-extrabold text-sm hover:opacity-95 shadow-md transition-all flex items-center justify-center gap-2 mt-4 cursor-pointer"
+                disabled={isSubmitting || isLoadingAvailability || !hasFreshAvailability || Boolean(availabilityError) || !activeSelectedTime}
+                className="w-full py-3.5 rounded-2xl emerald-gradient-bg text-white font-extrabold text-sm hover:opacity-95 shadow-md transition-all flex items-center justify-center gap-2 mt-4 cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <CheckCircle2 className="w-4 h-4" />
-                <span>{isAr ? 'تأكيد حجز الحصة الأن' : 'Confirm Booking Now'}</span>
+                <span>{isSubmitting ? (isAr ? 'جارٍ الحجز...' : 'Booking...') : (isAr ? 'تأكيد حجز الحصة الآن' : 'Confirm booking')}</span>
               </button>
             </form>
           </div>
@@ -185,9 +248,9 @@ export const BookingModal: React.FC<BookingModalProps> = ({ teacher, onClose }) 
             </h3>
 
             <p className="text-slate-600 text-xs leading-relaxed max-w-sm mx-auto">
-              {isAr 
-                ? `تم حجز موعدك مع ${teacher.nameAr} بتاريخ ${selectedDate} الساعة ${selectedTime}.` 
-                : `Your session with ${teacher.nameEn} is scheduled for ${selectedDate} at ${selectedTime}.`}
+              {isAr
+                ? `تم حجز موعدك مع ${teacher.nameAr} بتاريخ ${selectedDate} الساعة ${activeSelectedTime}.`
+                : `Your session with ${teacher.nameEn} is scheduled for ${selectedDate} at ${activeSelectedTime}.`}
             </p>
 
             <div className="bg-amber-50 text-amber-950 p-4 rounded-2xl border border-amber-200 text-xs flex flex-col items-center gap-1.5 text-center">
@@ -208,6 +271,6 @@ export const BookingModal: React.FC<BookingModalProps> = ({ teacher, onClose }) 
           </div>
         )}
       </div>
-    </div>
+    </AccessibleModal>
   );
 };

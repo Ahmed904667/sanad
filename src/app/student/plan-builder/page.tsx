@@ -1,74 +1,54 @@
 'use client';
 
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { localizeWeekday, localizeQuranScope } from '@/utils/localization';
+import { UNAVAILABLE_TEACHER } from '@/utils/unavailableTeacher';
 import { useApp } from '@/context/AppContext';
+import type { ClassPlanSegment } from '@/data/mushafPageData';
 import { AvatarBadge } from '@/components/AvatarBadge';
 import { TeacherReviewsModal } from '@/components/TeacherReviewsModal';
 import { AuthGuard } from '@/components/AuthGuard';
-import { SubscriptionPlan, Teacher, Lesson, LearningGoalTrack, StudentQuranGoal, Review } from '@/types';
+import { formatAvailabilityRanges } from '@/utils/timeFormat';
+import { getTeacherAvailableSlots, lessonTimesOverlap, WEEKDAYS_AR } from '@/utils/availability';
+import {  Teacher, Lesson, LearningGoalTrack, StudentQuranGoal } from '@/types';
 import { SUBSCRIPTION_GOALS } from '@/data/mockData';
-import { 
-  QURAN_SURAHS, 
-  QURAN_JUZ_LIST, 
-  getPageForSurahAyah, 
-  getExactSurahsAndAyahsForPages,
+import {
+  QURAN_SURAHS,
+  QURAN_JUZ_LIST,
+  getPageForSurahAyah,
   partitionSurahsAcrossClasses,
   partitionJuzAcrossClasses,
   getDayNameArFromDate
 } from '@/data/quranData';
-import { 
-  User, 
-  Mail, 
-  Phone, 
-  Lock, 
-  CheckCircle2, 
-  BookOpen, 
-  Sparkles, 
-  Calendar, 
-  Clock, 
-  ChevronRight, 
-  ChevronLeft, 
-  ShieldCheck, 
-  Video, 
+import {
+
+  CheckCircle2,
+  BookOpen,
+  Sparkles,
   Star,
-  Award,
-  CreditCard,
-  Building2,
-  FileText,
-  Upload,
   Layers,
-  Target,
   Check,
-  Baby,
-  BookmarkCheck,
   Search,
   Calculator,
   Sliders,
-  ListOrdered,
-  BookMarked,
   AlertTriangle,
-  GraduationCap,
   Save,
-  ArrowRight,
-  RefreshCw,
-  Info
+  ArrowRight
 } from 'lucide-react';
 
 function PlanBuilderContent() {
   const router = useRouter();
-  const { 
-    language, 
-    student, 
-    currentUser, 
-    plans, 
-    teachers, 
-    lessons, 
-    reviews,
+  const {
+    language,
+    student,
+    currentUser,
+    plans,
+    teachers,
+    lessons,
     userAccounts,
-    updateStudentQuranGoal, 
-    updateUpcomingPlanLessons 
+    updateUpcomingPlanLessons
   } = useApp();
   const isAr = language === 'ar';
 
@@ -79,10 +59,11 @@ function PlanBuilderContent() {
   }, [currentUser, router]);
 
   const [isSavedSuccessfully, setIsSavedSuccessfully] = useState(false);
+  const [planSaveError, setPlanSaveError] = useState('');
   const currentStudentId = currentUser?.id || student.id;
   const studentLessons = lessons.filter(l => l.studentId === currentStudentId);
   const activePlan = plans.find(p => p.id === (student.activePlanId || student.pendingPlanId)) || plans[1];
-  
+
   const baseLessons = activePlan.lessonsPerMonth || 4;
   const extraLessons = student.extraPurchasedClassesCount || student.extraClassCredits || 0;
   const totalLessonsInPlan = baseLessons + extraLessons;
@@ -128,14 +109,14 @@ function PlanBuilderContent() {
   const approvedTeachers = teachers.filter(t => t.approvalStatus === 'APPROVED');
   const filteredTeachers = approvedTeachers.filter(t => t.gender === studentGender).length > 0
     ? approvedTeachers.filter(t => t.gender === studentGender)
-    : (approvedTeachers.length > 0 ? approvedTeachers : teachers);
+    : approvedTeachers;
   const [selectedTeacherId, setSelectedTeacherId] = useState<string>(() => {
     const saved = student.quranGoal?.assignedTeacherId || student.assignedTeacherId;
     if (saved && approvedTeachers.some(t => t.id === saved)) return saved;
-    return filteredTeachers[0]?.id || teachers[0]?.id;
+    return filteredTeachers[0]?.id || '';
   });
   const [modalReviewsTeacher, setModalReviewsTeacher] = useState<Teacher | null>(null);
-  const selectedTeacher = teachers.find(t => t.id === selectedTeacherId) || filteredTeachers[0] || teachers[0];
+  const selectedTeacher = approvedTeachers.find(t => t.id === selectedTeacherId) || filteredTeachers[0] || UNAVAILABLE_TEACHER;
 
   // 4. TIMETABLE & PER-DAY CUSTOM TIMES
   const [selectedDays, setSelectedDays] = useState<string[]>(() => {
@@ -173,7 +154,7 @@ function PlanBuilderContent() {
     .filter((j): j is (typeof QURAN_JUZ_LIST)[0] => Boolean(j));
 
   // Helper to get customized/safe range for any Surah
-  const getSurahRange = (surahNum: number) => {
+  const getSurahRange = useCallback((surahNum: number) => {
     const sObj = QURAN_SURAHS.find(s => s.number === surahNum);
     const maxA = sObj?.totalVerses || 1;
     const custom = surahAyahCustomMap[surahNum];
@@ -185,7 +166,7 @@ function PlanBuilderContent() {
       totalVerses: Math.max(1, eA - sA + 1),
       isFullSurah: sA === 1 && eA === maxA
     };
-  };
+  }, [surahAyahCustomMap]);
 
   const setSurahRange = (surahNum: number, startA: number, endA: number) => {
     const sObj = QURAN_SURAHS.find(s => s.number === surahNum);
@@ -289,7 +270,7 @@ function PlanBuilderContent() {
     return acc + getSurahRange(s.number).totalVerses;
   }, 0);
 
-  const multiSurahsPagesList = useMemo(() => {
+  const multiSurahsPagesList = (() => {
     const pageSet = new Set<number>();
     for (const surah of selectedSurahsList) {
       const range = getSurahRange(surah.number);
@@ -301,7 +282,7 @@ function PlanBuilderContent() {
     }
     const list = Array.from(pageSet).sort((a, b) => a - b);
     return list.length > 0 ? list : [1];
-  }, [selectedSurahsList, surahAyahCustomMap]);
+  })();
 
   const multiSurahsStartPage = multiSurahsPagesList[0] || 1;
   const multiSurahsEndPage = multiSurahsPagesList[multiSurahsPagesList.length - 1] || 604;
@@ -314,7 +295,7 @@ function PlanBuilderContent() {
 
   // Target Minimum Pages Requirement
   const currentSelectedPagesCount = targetMode === 'SURAH' ? multiSurahsTotalPages : multiJuzTotalPages;
-  const minRequiredPages = Math.max(1, Math.ceil(totalLessonsInPlan * 0.5));
+  const minRequiredPages = 1;
   const isTargetValid = currentSelectedPagesCount >= minRequiredPages;
 
   // Summary Text
@@ -351,7 +332,7 @@ function PlanBuilderContent() {
   const remainingCount = Math.max(0, totalLessonsInPlan - completedCount);
 
   // Auto-calculated Class Partition Breakdown (Preserves and Locks Completed Classes)
-  const autoCalculatedClasses = useMemo(() => {
+  const autoCalculatedClasses = (() => {
     // 1. Map completed lessons to locked cards (stay fixed to original targets)
     const completedItems = completedLessons.map((compLesson, idx) => {
       const isExtra = idx + 1 > baseLessons;
@@ -366,7 +347,7 @@ function PlanBuilderContent() {
         summaryAr: summaryText,
         pageRangeText: pageText,
         pagesCountText: isAr ? 'تم الإنجاز والحفظ بنجاح' : 'Completed',
-        ayahCount: 15,
+        ayahCount: 0,
         isCompleted: true,
         isExtra
       };
@@ -377,7 +358,7 @@ function PlanBuilderContent() {
       return completedItems;
     }
 
-    let remainingPartitions: any[] = [];
+    let remainingPartitions: ClassPlanSegment[] = [];
     if (targetMode === 'SURAH') {
       remainingPartitions = partitionSurahsAcrossClasses(
         selectedSurahsList.map(s => {
@@ -406,7 +387,7 @@ function PlanBuilderContent() {
     });
 
     return [...completedItems, ...formattedRemaining];
-  }, [completedLessons, completedCount, remainingCount, targetMode, selectedSurahsList, surahAyahCustomMap, selectedJuzList, totalLessonsInPlan, baseLessons, isAr]);
+  })();
 
   // Auto smooth scroll to schedule section if #schedule-section anchor is present
   useEffect(() => {
@@ -422,23 +403,14 @@ function PlanBuilderContent() {
 
   // Timetable helpers
   const teacherAvailableSlots = useMemo(() => {
-    if (selectedTeacher.availableSlots && selectedTeacher.availableSlots.length > 0) {
-      return selectedTeacher.availableSlots;
-    }
-    const s = parseInt((selectedTeacher.workingHoursStart || '12:00').split(':')[0], 10);
-    const e = parseInt((selectedTeacher.workingHoursEnd || '18:00').split(':')[0], 10);
-    const slots: string[] = [];
-    for (let h = s; h < e; h++) {
-      const pad = h < 10 ? `0${h}` : `${h}`;
-      slots.push(`${pad}:00`);
-      slots.push(`${pad}:30`);
-    }
-    return slots.length > 0 ? slots : ['12:00', '12:30', '13:00', '13:30', '14:00', '14:30', '15:00', '15:30', '16:00', '16:30', '17:00', '17:30'];
-  }, [selectedTeacher]);
+    const days = selectedTeacher.workingDaysAr?.length ? selectedTeacher.workingDaysAr : WEEKDAYS_AR;
+    return Array.from(new Set(days.flatMap(day => getTeacherAvailableSlots(selectedTeacher, day, activePlan.lessonDurationMinutes)))).sort();
+  }, [selectedTeacher, activePlan.lessonDurationMinutes]);
 
   // Helper to check if a slot is booked for a specific day of the week (including pending registrations)
   const isSlotBookedOnDay = useMemo(() => {
     return (day: string, slot: string): boolean => {
+      if (!getTeacherAvailableSlots(selectedTeacher, day, activePlan.lessonDurationMinutes).includes(slot)) return true;
       // 1. Check teacher static profile locks
       if (selectedTeacher.bookedTimeSlots) {
         if (selectedTeacher.bookedTimeSlots.includes(slot) || selectedTeacher.bookedTimeSlots.includes(`${day}_${slot}`)) {
@@ -449,10 +421,8 @@ function PlanBuilderContent() {
       // 2. Check scheduled lessons in system
       const isBookedInLessons = lessons.some(l => {
         if (l.teacherId !== selectedTeacher.id || l.status !== 'SCHEDULED') return false;
-        const lessonTime = l.time.includes('@') ? l.time.split('@')[1]?.trim() : l.time.trim();
-        if (lessonTime !== slot) return false;
         const lessonDay = getDayNameArFromDate(l.date);
-        return lessonDay === day;
+        return lessonDay === day && lessonTimesOverlap(slot, activePlan.lessonDurationMinutes, l.time, l.durationMinutes || 5);
       });
       if (isBookedInLessons) return true;
 
@@ -464,22 +434,23 @@ function PlanBuilderContent() {
         if (prof.verificationStatus !== 'PENDING_VERIFICATION' && !prof.pendingPlanId) return false;
 
         const dayMap = prof.quranGoal?.dayTimeSlots || {};
-        if (dayMap[day] === slot) return true;
-        if (prof.quranGoal?.agreedWeeklyDaysAr?.includes(day) && prof.quranGoal?.agreedTimeSlot === slot) return true;
+        const pendingDuration = plans.find(plan => plan.id === (prof.pendingPlanId || prof.activePlanId))?.lessonDurationMinutes || 5;
+        if (dayMap[day] && lessonTimesOverlap(slot, activePlan.lessonDurationMinutes, dayMap[day], pendingDuration)) return true;
+        if (prof.quranGoal?.agreedWeeklyDaysAr?.includes(day) && prof.quranGoal?.agreedTimeSlot && lessonTimesOverlap(slot, activePlan.lessonDurationMinutes, prof.quranGoal.agreedTimeSlot, pendingDuration)) return true;
 
         return false;
       });
     };
-  }, [selectedTeacher, lessons, userAccounts, currentStudentId]);
+  }, [selectedTeacher, lessons, userAccounts, currentStudentId, activePlan.lessonDurationMinutes, plans]);
 
   // Helper to find a safe non-booked time slot for a teacher on a given day
-  const getSafeTimeSlot = (day: string, preferredTime?: string) => {
+  const getSafeTimeSlot = useCallback((day: string, preferredTime?: string) => {
     const validSlots = teacherAvailableSlots.filter(s => !isSlotBookedOnDay(day, s));
     if (preferredTime && validSlots.includes(preferredTime)) {
       return preferredTime;
     }
     return validSlots[0] || teacherAvailableSlots[0] || '14:00';
-  };
+  }, [teacherAvailableSlots, isSlotBookedOnDay]);
 
   const allowedWeeklySlots = useMemo(() => {
     const monthlyCount = activePlan?.lessonsPerMonth || 8;
@@ -505,6 +476,8 @@ function PlanBuilderContent() {
     const validSlots = teacherAvailableSlots.filter(s => !isSlotBookedOnDay('الإثنين', s));
     const fallbackSlot = validSlots[0] || teacherAvailableSlots[0] || '14:00';
 
+    // Keep selected lesson slots valid when the teacher schedule changes.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setSelectedSlotsQueue(prevQueue => {
       // 1. Keep only items on teacher's working days, with valid non-booked slots
       let updatedQueue = prevQueue
@@ -553,7 +526,7 @@ function PlanBuilderContent() {
 
       return updatedQueue;
     });
-  }, [selectedTeacherId, selectedTeacher, teacherAvailableSlots, isSlotBookedOnDay, allowedWeeklySlots]);
+  }, [selectedTeacherId, selectedTeacher, teacherAvailableSlots, isSlotBookedOnDay, allowedWeeklySlots, getSafeTimeSlot]);
 
   const getDaySlotsArray = (day: string): string[] => {
     return selectedSlotsQueue.filter(item => item.day === day).map(item => item.time);
@@ -667,21 +640,24 @@ function PlanBuilderContent() {
     });
   };
 
+  const [savingPlan, setSavingPlan] = useState(false);
   // SAVE & REGENERATE UPCOMING LESSONS
-  const handleSavePlan = (e: React.FormEvent) => {
+  const handleSavePlan = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!isTargetValid) return;
+    if (!isTargetValid || savingPlan) return;
+    if (!selectedTeacher.id) { setPlanSaveError(isAr ? 'لا يوجد معلم متاح للجدولة حالياً.' : 'No teacher is available for scheduling yet.'); return; }
 
     const matchingGoal = SUBSCRIPTION_GOALS.find(g => g.id === track);
-    const goalTitle = isAr ? (matchingGoal?.titleAr || 'مسار القرآن') : (matchingGoal?.titleEn || 'Quran Track');
+    const goalTitleAr = matchingGoal?.titleAr || 'مسار القرآن';
+    const goalTitleEn = matchingGoal?.titleEn || 'Quran Track';
 
     const qGoal: StudentQuranGoal = {
       track,
-      targetSurahOrJuzAr: `${goalTitle}: ${selectedTargetSummaryText}`,
-      targetSurahOrJuzEn: `${goalTitle}: ${selectedTargetSummaryText}`,
-      orientationCompleted: true,
+      targetSurahOrJuzAr: `${goalTitleAr}: ${selectedTargetSummaryText}`,
+      targetSurahOrJuzEn: `${goalTitleEn}: ${localizeQuranScope(selectedTargetSummaryText, false)}`,
+      orientationCompleted: lessons.some(lesson => lesson.studentId === currentStudentId && lesson.isOrientationSession && lesson.status === 'COMPLETED'),
       agreedWeeklyDaysAr: selectedDays,
-      agreedWeeklyDaysEn: selectedDays,
+      agreedWeeklyDaysEn: selectedDays.map(day => localizeWeekday(day, false)),
       agreedTimeSlot: dayTimeSlots[selectedDays[0]] || '12:00',
       dayTimeSlots,
       assignedTeacherId: selectedTeacher.id,
@@ -693,7 +669,6 @@ function PlanBuilderContent() {
       isHybridTrack: track === 'COMBINED'
     };
 
-    updateStudentQuranGoal(qGoal);
 
     // Calculate already completed classes to preserve them completely
     const completedLessons = studentLessons.filter(l => l.status === 'COMPLETED');
@@ -703,7 +678,7 @@ function PlanBuilderContent() {
     // Generate only remaining upcoming scheduled classes
     const newUpcomingLessons: Lesson[] = [];
     let generatedCount = 0;
-    let checkDate = new Date();
+    const checkDate = new Date();
     checkDate.setDate(checkDate.getDate() + 1);
     let dayOffset = 0;
 
@@ -728,10 +703,11 @@ function PlanBuilderContent() {
           studentNameEn: student.nameEn,
           date: dateStr,
           time: exactDayTime,
-          durationMinutes: 30,
+          durationMinutes: activePlan.lessonDurationMinutes,
           status: 'SCHEDULED',
           googleMeetUrl: '',
           surahTargetAr: `مقرر ${classTarget.summaryAr} • ${classTarget.pageRangeText}`,
+          surahTargetEn: localizeQuranScope(`مقرر ${classTarget.summaryAr} • ${classTarget.pageRangeText}`, false),
           notes: `حصة مدارسة (${matchedDayName} الساعة ${exactDayTime})`
         });
         generatedCount++;
@@ -739,7 +715,14 @@ function PlanBuilderContent() {
       dayOffset++;
     }
 
-    updateUpcomingPlanLessons(newUpcomingLessons, currentStudentId);
+    setSavingPlan(true);
+    setPlanSaveError('');
+    if (!await updateUpcomingPlanLessons(newUpcomingLessons, currentStudentId, qGoal)) {
+      setSavingPlan(false);
+      setPlanSaveError(isAr ? 'تعذر حفظ جدول الحصص. تحقق من الأوقات وحاول مرة أخرى.' : 'Could not save the class schedule. Check the selected times and try again.');
+      return;
+    }
+    setSavingPlan(false);
     setIsSavedSuccessfully(true);
 
     setTimeout(() => {
@@ -753,7 +736,7 @@ function PlanBuilderContent() {
   return (
     <div className="min-h-screen py-8 px-4 sm:px-6 lg:px-8 bg-slate-50/70">
       <div className="max-w-4xl mx-auto space-y-6 pb-44 md:pb-32">
-        
+
         {/* HEADER HERO */}
         <div className="bg-gradient-to-r from-emerald-950 via-teal-900 to-emerald-900 rounded-3xl p-5 sm:p-7 text-white shadow-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border border-emerald-700/50">
           <div className="flex items-center gap-3.5">
@@ -945,15 +928,15 @@ function PlanBuilderContent() {
                     {isTargetValid ? <CheckCircle2 className="w-4 h-4" /> : <AlertTriangle className="w-4 h-4" />}
                   </div>
                   <div className="text-xs font-extrabold">
-                    {isAr 
-                      ? (isTargetValid ? 'المقرر مستوفٍ للحد الأدنى المطلوب' : `المقرر يحتاج استكمال الحد الأدنى (${currentSelectedPagesCount} من ${minRequiredPages} صفحات)`)
-                      : (isTargetValid ? 'Target meets plan requirement' : `Minimum target not met (${currentSelectedPagesCount}/${minRequiredPages} pages)`)}
+                    {isAr
+                      ? (isTargetValid ? 'اختر وتيرة مناسبة بالتشاور مع معلمك' : `المقرر يحتاج استكمال الحد الأدنى (${currentSelectedPagesCount} من ${minRequiredPages} صفحات)`)
+                      : (isTargetValid ? 'Choose a manageable pace with your teacher' : `Minimum target not met (${currentSelectedPagesCount}/${minRequiredPages} pages)`)}
                   </div>
                 </div>
 
                 <span className={`text-[11px] font-black px-2.5 py-1 rounded-xl border shrink-0 self-start sm:self-auto ${
-                  isTargetValid 
-                    ? 'bg-emerald-600 text-white border-emerald-700' 
+                  isTargetValid
+                    ? 'bg-emerald-600 text-white border-emerald-700'
                     : 'bg-amber-600 text-white border-amber-700'
                 }`}>
                   {currentSelectedPagesCount} {isAr ? 'صفحة' : 'pages'} (Min: {minRequiredPages})
@@ -1032,7 +1015,7 @@ function PlanBuilderContent() {
                             key={surah.number}
                             className="inline-flex items-center gap-1.5 bg-emerald-800 text-white text-[11px] font-black px-2.5 py-1 rounded-xl shadow-2xs"
                           >
-                            <span>{surah.number}. {surah.nameAr} {!range.isFullSurah && `(${range.startAyah}-${range.endAyah})`}</span>
+                            <span>{surah.number}. {isAr ? surah.nameAr : surah.nameEn} {!range.isFullSurah && `(${range.startAyah}-${range.endAyah})`}</span>
                             {selectedSurahsList.length > 1 && (
                               <button
                                 type="button"
@@ -1054,7 +1037,7 @@ function PlanBuilderContent() {
                       <div className="flex items-center gap-2">
                         <Sparkles className="w-4 h-4 text-emerald-700 shrink-0" />
                         <span className="text-xs text-emerald-950 font-bold">
-                          {isAr 
+                          {isAr
                             ? `تخصيص الآيات: يمكنك تحديد بداية ونهاية الآيات لكل سورة (${multiSurahsTotalPages} صفحة • ${multiSurahsTotalVerses} آية)`
                             : `Customize verses: set start and end ayah for each surah (${multiSurahsTotalPages} pages).`}
                         </span>
@@ -1114,7 +1097,7 @@ function PlanBuilderContent() {
                                     {surah.number}
                                   </span>
                                   <span className="text-xs font-black text-slate-900">
-                                    سورة {surah.nameAr}
+                                    {isAr ? 'سورة' : 'Surah'} {isAr ? surah.nameAr : surah.nameEn}
                                   </span>
                                   <span className="text-[10px] text-slate-500 font-medium">
                                     (إجمالي الآيات: {surah.totalVerses})
@@ -1126,8 +1109,8 @@ function PlanBuilderContent() {
                                     type="button"
                                     onClick={() => setSurahRange(surah.number, 1, surah.totalVerses)}
                                     className={`text-[10px] font-bold px-2 py-0.5 rounded-md border transition-colors cursor-pointer ${
-                                      range.isFullSurah 
-                                        ? 'bg-emerald-800 text-white border-emerald-800' 
+                                      range.isFullSurah
+                                        ? 'bg-emerald-800 text-white border-emerald-800'
                                         : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
                                     }`}
                                   >
@@ -1233,15 +1216,15 @@ function PlanBuilderContent() {
                       const allJuzSurahsSelected = group.surahs.length > 0 && group.surahs.every((s) => selectedSurahNumbers.includes(s.number));
 
                       return (
-                        <div 
-                          key={group.juzNumber} 
+                        <div
+                          key={group.juzNumber}
                           id={`plan-juz-fahras-${group.juzNumber}`}
                           className="bg-white rounded-2xl border border-slate-200 p-2.5 space-y-2 shadow-2xs"
                         >
                           <div className="flex items-center justify-between border-b border-slate-100 pb-1.5">
                             <div className="flex items-center gap-2">
                               <span className="bg-emerald-800 text-white text-[10px] font-black px-2 py-0.5 rounded-lg">
-                                الجزء {group.juzNumber}
+                                {isAr ? 'الجزء' : 'Juz'} {group.juzNumber}
                               </span>
                               <span className="text-xs font-black text-slate-900">
                                 {group.juzMeta.famousNameAr}
@@ -1257,7 +1240,7 @@ function PlanBuilderContent() {
                                   : 'bg-slate-50 text-slate-700 border-slate-200'
                               }`}
                             >
-                              {allJuzSurahsSelected 
+                              {allJuzSurahsSelected
                                 ? (isAr ? '✓ محدد' : '✓ Selected')
                                 : (isAr ? `+ تحديد الكل (${group.surahs.length})` : `+ All (${group.surahs.length})`)}
                             </button>
@@ -1351,7 +1334,7 @@ function PlanBuilderContent() {
                         >
                           <div className="flex items-center justify-between">
                             <span className="text-xs font-black">
-                              جزء {j.number}
+                              {isAr ? 'جزء' : 'Juz'} {j.number}
                             </span>
                             {isChecked ? (
                               <Check className="w-3.5 h-3.5 text-emerald-700" />
@@ -1441,7 +1424,7 @@ function PlanBuilderContent() {
                               </h3>
                               <span className="bg-amber-100 text-amber-950 font-black px-2 py-0.5 rounded-full text-[10px] flex items-center gap-1">
                                 <Star className="w-3 h-3 fill-amber-400 text-amber-500" />
-                                <span>{teacher.rating.toFixed(1)}</span>
+                                <span>{teacher.reviewsCount ? teacher.rating.toFixed(1) : (isAr ? 'لا توجد تقييمات' : 'No reviews')}</span>
                               </span>
                             </div>
                             <p className="text-slate-500 text-[11px] font-medium">{isAr ? teacher.titleAr : teacher.titleEn}</p>
@@ -1458,7 +1441,7 @@ function PlanBuilderContent() {
                       {/* Teacher Available Working Hours & Slots */}
                       <div className="pt-2 border-t border-slate-100 text-xs">
                         <div className="flex items-center justify-between pb-1 text-slate-600 font-bold text-[11px]">
-                          <span>{isAr ? `ساعات العمل: ${teacher.workingHoursStart || '12:00'} - ${teacher.workingHoursEnd || '18:00'}` : `Hours: ${teacher.workingHoursStart} - ${teacher.workingHoursEnd}`}</span>
+                          <span>{isAr ? 'الأوقات المتاحة: ' : 'Available times: '}{formatAvailabilityRanges(teacher.availabilityRanges, teacher.workingHoursStart, teacher.workingHoursEnd, isAr, teacher.availabilityByDay)}</span>
                         </div>
                         <div className="flex flex-wrap gap-1">
                           {slots.map((slot) => {
@@ -1529,7 +1512,7 @@ function PlanBuilderContent() {
                             : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50 cursor-pointer'
                         }`}
                       >
-                        <div>{day}</div>
+                        <div>{isAr ? day : ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][['الأحد','الإثنين','الثلاثاء','الأربعاء','الخميس','الجمعة','السبت'].indexOf(day)]}</div>
                       </button>
                     );
                   })}
@@ -1539,7 +1522,7 @@ function PlanBuilderContent() {
               {/* PER-DAY CUSTOM TIME PICKERS */}
               <div className="space-y-2.5 pt-1">
                 <label className="block text-xs font-bold text-slate-700">
-                  {isAr ? '2. اختر الوقت المفضل (مدة الحصة 30 دقيقة):' : '2. Assign 30-min Time Slots:'}
+                  {isAr ? `2. اختر وقت الحصة (${activePlan.lessonDurationMinutes} دقائق):` : `2. Choose class times (${activePlan.lessonDurationMinutes} min):`}
                 </label>
 
                 <div className="space-y-2.5">
@@ -1549,7 +1532,7 @@ function PlanBuilderContent() {
                     return (
                       <div key={day} className="bg-slate-50 p-3 rounded-2xl border border-slate-200 space-y-2">
                         <div className="flex items-center justify-between text-xs font-extrabold text-emerald-950 flex-wrap gap-1.5">
-                          <span>{isAr ? `يوم ${day}:` : day}</span>
+                          <span>{isAr ? `يوم ${day}:` : ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][['الأحد','الإثنين','الثلاثاء','الأربعاء','الخميس','الجمعة','السبت'].indexOf(day)]}</span>
                           <span className="text-emerald-800 font-mono bg-emerald-100/90 px-2 py-0.5 rounded-md text-[11px] font-black">
                             {selectedSlotsForDay.join(' • ')}
                           </span>
@@ -1633,15 +1616,15 @@ function PlanBuilderContent() {
                       {isAr ? 'التوزيع والتصميم التلقائي لخطة الحصص' : 'Calculated Class Plan Breakdown'}
                     </h3>
                     <p className="text-[11px] text-slate-400">
-                      {isAr 
-                        ? `مقسم بالتساوي على (${totalLessonsInPlan}) حصص حسب باقتك (${activePlan.titleAr})` 
+                      {isAr
+                        ? `مقسم بالتساوي على (${totalLessonsInPlan}) حصص حسب باقتك (${activePlan.titleAr})`
                         : `Divided across ${totalLessonsInPlan} classes`}
                     </p>
                   </div>
                 </div>
 
                 <span className="text-[11px] font-extrabold bg-emerald-900/80 text-emerald-300 px-3 py-1 rounded-full border border-emerald-700/50 self-start sm:self-auto">
-                  {targetMode === 'SURAH' 
+                  {targetMode === 'SURAH'
                     ? `${(multiSurahsTotalPages / totalLessonsInPlan).toFixed(1)} صفحة / حصة`
                     : `${(multiJuzTotalPages / totalLessonsInPlan).toFixed(1)} صفحة / حصة`}
                 </span>
@@ -1654,7 +1637,7 @@ function PlanBuilderContent() {
                   const isExtra = item.isExtra;
 
                   return (
-                    <div 
+                    <div
                       key={item.classNum}
                       className={`p-3 rounded-2xl flex items-start gap-2.5 transition-all ${
                         isCompleted
@@ -1667,8 +1650,8 @@ function PlanBuilderContent() {
                       <div className={`w-7 h-7 rounded-lg text-xs font-black flex items-center justify-center shrink-0 mt-0.5 ${
                         isCompleted
                           ? 'bg-emerald-600 text-white font-black'
-                          : isExtra 
-                          ? 'bg-amber-400/20 text-amber-300 border border-amber-400/30' 
+                          : isExtra
+                          ? 'bg-amber-400/20 text-amber-300 border border-amber-400/30'
                           : 'bg-emerald-700/60 text-emerald-200'
                       }`}>
                         {isCompleted ? '✓' : item.classNum}
@@ -1680,14 +1663,14 @@ function PlanBuilderContent() {
                           }`}>
                             {item.title}
                           </span>
-                          
+
                           <span className="text-[10px] font-semibold px-2 py-0.5 rounded-md text-slate-400 bg-slate-900/80">
-                            {item.pageRangeText}
+                            {localizeQuranScope(item.pageRangeText, isAr)}
                           </span>
                         </div>
-                        
+
                         <p className="text-[11px] font-medium leading-relaxed break-words text-slate-200">
-                          {item.summaryAr}
+                          {localizeQuranScope(item.summaryAr, isAr)}
                         </p>
                       </div>
                     </div>
@@ -1707,7 +1690,7 @@ function PlanBuilderContent() {
 
                 <button
                   type="button"
-                  disabled={!isTargetValid || isSavedSuccessfully}
+                  disabled={!isTargetValid || isSavedSuccessfully || savingPlan}
                   onClick={handleSavePlan}
                   className={`w-full sm:w-auto px-8 py-3.5 rounded-2xl font-black text-xs shadow-xl flex items-center justify-center gap-2 transition-all ${
                     !isTargetValid
@@ -1730,6 +1713,7 @@ function PlanBuilderContent() {
                   )}
                 </button>
               </div>
+              {planSaveError && <p role="alert" className="text-sm font-medium text-red-400">{planSaveError}</p>}
             </section>
           </div>
         )}
@@ -1747,7 +1731,7 @@ function PlanBuilderContent() {
                 </span>
               </div>
               <p className="text-[11px] text-slate-400">
-                {isAr 
+                {isAr
                   ? `المعلم: ${selectedTeacher.nameAr} • ${selectedDays.join('، ')} (${selectedDays.map(d => `${d} ${dayTimeSlots[d] || '12:00'}`).join(' • ')})`
                   : `Teacher: ${selectedTeacher.nameEn} • ${selectedDays.join(', ')}`}
               </p>
@@ -1763,7 +1747,7 @@ function PlanBuilderContent() {
 
               <button
                 type="button"
-                disabled={!isTargetValid || isSavedSuccessfully}
+                disabled={!isTargetValid || isSavedSuccessfully || savingPlan}
                 onClick={handleSavePlan}
                 className={`flex-1 sm:flex-initial px-8 py-3.5 rounded-2xl font-black text-xs shadow-xl flex items-center justify-center gap-2 transition-all ${
                   !isTargetValid

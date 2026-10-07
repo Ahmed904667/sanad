@@ -1,36 +1,46 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Sanad
 
-## Getting Started
+Sanad is a Next.js application backed by PostgreSQL and Prisma.
 
-First, run the development server:
+## Run locally
+
+1. Install dependencies with `npm install`.
+2. Copy `.env.example` to `.env`. Set `DATABASE_URL` to your PostgreSQL database and replace `SESSION_SECRET` with a random secret of at least 32 characters.
+3. Start the local database with `docker compose up -d postgres`.
+4. Generate the Prisma client and apply the schema:
+
+   ```bash
+   npm run db:generate
+   npm run db:push
+   ```
+
+5. Start the app with `npm run dev`, then open <http://localhost:3000>.
+
+Development includes demo sign-in accounts shown on the login page. They use the demo password `123456` and are disabled in production.
+
+## Production setup
+
+Set `DATABASE_URL` and a private `SESSION_SECRET` in the production environment, apply the schema with `npm run db:push`, then create the first administrator account using environment variables:
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+INITIAL_ADMIN_EMAIL=admin@example.com \
+INITIAL_ADMIN_PASSWORD='use-a-unique-password-of-at-least-12-characters' \
+INITIAL_ADMIN_NAME='Platform Administrator' \
+npm run db:seed
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+The seed command creates the admin only when that email is unused. It never prints or replaces the password. Then run `npm run build` and `npm run start`.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Teacher profiles and class reviews
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Teachers can edit their teaching title, experience, languages, specializations, biography, and ijazah details in their profile page. Approved profiles are visible to students; administrators can see the full profile and account contact information. Teachers can record the Quran scope and feedback when completing a class. Students can review each completed class separately from its class page.
 
-## Learn More
+## CI/CD
 
-To learn more about Next.js, take a look at the following resources:
+GitHub Actions runs ESLint, TypeScript, and a production build for pull requests and pushes to `main`. Once the repository is connected to Vercel, add these GitHub Actions secrets to enable preview deployments for pull requests and production deployments from `main`:
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+- `VERCEL_TOKEN`
+- `VERCEL_ORG_ID`
+- `VERCEL_PROJECT_ID`
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+The Vercel project must have its production and preview `DATABASE_URL` and `SESSION_SECRET` variables configured. Database schema changes remain an explicit release step: run `npm run db:push` against the target database before deploying code that requires a new schema.

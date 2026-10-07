@@ -1,22 +1,19 @@
 'use client';
 
+import { AccessibleModal } from './AccessibleModal';
+
 import React, { useState } from 'react';
 import { useApp } from '@/context/AppContext';
 import { Teacher, Lesson } from '@/types';
 import { formatTime12h } from '@/utils/timeFormat';
-import { 
-  Clock, 
-  Calendar, 
-  AlertTriangle, 
-  CheckCircle2, 
-  X, 
+import { AvailabilityRange, generateSlotsForRanges, lessonFitsAvailability, WEEKDAYS_AR } from '@/utils/availability';
+import {
+  Clock,
+  Calendar,
+  AlertTriangle,
+  CheckCircle2,
+  X,
   Check,
-  Plus,
-  Trash2,
-  Sliders,
-  Sun,
-  Sunrise,
-  Moon
 } from 'lucide-react';
 
 interface TeacherAvailabilityModalProps {
@@ -25,131 +22,39 @@ interface TeacherAvailabilityModalProps {
   teacher: Teacher;
 }
 
-export interface AvailabilityShift {
-  id: string;
-  nameAr: string;
-  nameEn: string;
-  start: string;
-  end: string;
-}
-
-const WEEKDAYS_AR = ['الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
 const WEEKDAYS_EN = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
-const ALL_HOURS_OPTIONS = [
-  '05:00', '05:30', '06:00', '06:30', '07:00', '07:30', '08:00', '08:30', 
-  '09:00', '09:30', '10:00', '10:30', '11:00', '11:30', '12:00', '12:30', 
-  '13:00', '13:30', '14:00', '14:30', '15:00', '15:30', '16:00', '16:30', 
-  '17:00', '17:30', '18:00', '18:30', '19:00', '19:30', '20:00', '20:30', 
-  '21:00', '21:30', '22:00', '22:30', '23:00', '23:30'
-];
+const ALL_HOURS_OPTIONS = Array.from({ length: 24 * 12 }, (_, index) => {
+  const totalMinutes = index * 5;
+  return `${String(Math.floor(totalMinutes / 60)).padStart(2, '0')}:${String(totalMinutes % 60).padStart(2, '0')}`;
+});
 
 export function TeacherAvailabilityModal({ isOpen, onClose, teacher }: TeacherAvailabilityModalProps) {
   const { language, lessons, updateTeacherAvailability, userAccounts, student } = useApp();
   const isAr = language === 'ar';
 
-  // Mode Selection: 'STANDARD' (Single Continuous Range) vs 'FLEXIBLE_SHIFTS' (Multiple Custom Shifts)
-  const [timingMode, setTimingMode] = useState<'STANDARD' | 'FLEXIBLE_SHIFTS'>('STANDARD');
-
-  // 1. Standard Mode state
-  const [startHour, setStartHour] = useState(teacher.workingHoursStart || '12:00');
-  const [endHour, setEndHour] = useState(teacher.workingHoursEnd || '18:00');
-
-  // 2. Flexible Multi-Shift state
-  const [customShifts, setCustomShifts] = useState<AvailabilityShift[]>([
-    { id: 'shift-1', nameAr: 'الفترة الصباحية', nameEn: 'Morning Shift', start: '06:00', end: '09:00' },
-    { id: 'shift-2', nameAr: 'فترة الظهيرة', nameEn: 'Noon Shift', start: '11:00', end: '15:00' },
-    { id: 'shift-3', nameAr: 'الفترة المسائية', nameEn: 'Evening Shift', start: '21:00', end: '23:00' }
-  ]);
-
-  const [selectedDays, setSelectedDays] = useState<string[]>(
+  const initialDays =
     teacher.workingDaysAr && teacher.workingDaysAr.length > 0
-      ? teacher.workingDaysAr 
-      : ['الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس']
-  );
+      ? teacher.workingDaysAr
+      : ['الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس'];
+  const [selectedDays, setSelectedDays] = useState<string[]>(initialDays);
+  const [availabilityByDay, setAvailabilityByDay] = useState<Record<string, AvailabilityRange[]>>(() => {
+    if (teacher.availabilityByDay) return Object.fromEntries(Object.entries(teacher.availabilityByDay).map(([day, ranges]) => [day, ranges.map(range => ({ ...range }))]));
+    const legacyRanges = teacher.availabilityRanges?.length
+      ? teacher.availabilityRanges
+      : [{ start: teacher.workingHoursStart || '12:00', end: teacher.workingHoursEnd || '18:00' }];
+    return Object.fromEntries(initialDays.map(day => [day, legacyRanges.map(range => ({ ...range }))]));
+  });
   const [resolutionOption, setResolutionOption] = useState<'KEEP_EXISTING' | 'CANCEL_AND_REFUND_CREDIT' | 'NOTIFY_STUDENTS'>('KEEP_EXISTING');
   const [isSaved, setIsSaved] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const [summaryMsg, setSummaryMsg] = useState('');
+  const [availabilityError, setAvailabilityError] = useState('');
 
   if (!isOpen) return null;
 
-  // Generate slots array from a start and end time range (supports 30-min granularity)
-  const generateSlotsFromRange = (startStr: string, endStr: string): string[] => {
-    const parseTime = (timeStr: string) => {
-      const parts = timeStr.split(':');
-      return parseInt(parts[0], 10) * 60 + parseInt(parts[1] || '0', 10);
-    };
-
-    const startMin = parseTime(startStr);
-    const endMin = parseTime(endStr);
-    const slots: string[] = [];
-
-    if (startMin >= endMin) return slots;
-
-    for (let m = startMin; m < endMin; m += 30) {
-      const h = Math.floor(m / 60);
-      const min = m % 60;
-      const padH = h < 10 ? `0${h}` : `${h}`;
-      const padM = min === 0 ? '00' : `${min}`;
-      slots.push(`${padH}:${padM}`);
-    }
-    return slots;
-  };
-
-  // Generate proposed slots based on active mode
-  const getProposedSlots = (): { slots: string[]; minStart: string; maxEnd: string } => {
-    if (timingMode === 'STANDARD') {
-      const slots = generateSlotsFromRange(startHour, endHour);
-      return { slots, minStart: startHour, maxEnd: endHour };
-    }
-
-    // FLEXIBLE_SHIFTS mode: aggregate all shifts
-    const allSlotsSet = new Set<string>();
-    let minStart = '23:00';
-    let maxEnd = '00:00';
-
-    customShifts.forEach(shift => {
-      if (shift.start < minStart) minStart = shift.start;
-      if (shift.end > maxEnd) maxEnd = shift.end;
-
-      const shiftSlots = generateSlotsFromRange(shift.start, shift.end);
-      shiftSlots.forEach(s => allSlotsSet.add(s));
-    });
-
-    const sortedSlots = Array.from(allSlotsSet).sort();
-    return {
-      slots: sortedSlots,
-      minStart: sortedSlots.length > 0 ? minStart : '08:00',
-      maxEnd: sortedSlots.length > 0 ? maxEnd : '18:00'
-    };
-  };
-
-  const { slots: proposedSlots, minStart: computedStart, maxEnd: computedEnd } = getProposedSlots();
-
-  // Shift Management Functions
-  const addCustomShift = () => {
-    const newId = 'shift-' + Date.now();
-    setCustomShifts(prev => [
-      ...prev,
-      { 
-        id: newId, 
-        nameAr: `فترة إضافية ${prev.length + 1}`, 
-        nameEn: `Extra Shift ${prev.length + 1}`, 
-        start: '16:00', 
-        end: '19:00' 
-      }
-    ]);
-  };
-
-  const updateShift = (id: string, field: keyof AvailabilityShift, val: string) => {
-    setCustomShifts(prev => prev.map(s => s.id === id ? { ...s, [field]: val } : s));
-  };
-
-  const removeShift = (id: string) => {
-    if (customShifts.length <= 1) return; // Keep at least one shift
-    setCustomShifts(prev => prev.filter(s => s.id !== id));
-  };
-
+  const nextAvailability = Object.fromEntries(selectedDays.map(day => [day, availabilityByDay[day] || []]));
+  const proposedSlotsByDay = Object.fromEntries(selectedDays.map(day => [day, generateSlotsForRanges(nextAvailability[day], 5)]));
   // Helper to extract Arabic day name from date string "YYYY-MM-DD"
   const getDayNameArFromDateStr = (dateStr: string): string => {
     const parts = dateStr.split('-');
@@ -168,8 +73,8 @@ export function TeacherAvailabilityModal({ isOpen, onClose, teacher }: TeacherAv
     if (isAr && l.studentNameAr && l.studentNameAr.trim() !== '') return l.studentNameAr;
     if (!isAr && l.studentNameEn && l.studentNameEn.trim() !== '') return l.studentNameEn;
 
-    const foundUser = userAccounts.find(u => 
-      u.id === l.studentId || 
+    const foundUser = userAccounts.find(u =>
+      u.id === l.studentId ||
       (u.studentProfile && u.studentProfile.id === l.studentId)
     );
 
@@ -179,24 +84,21 @@ export function TeacherAvailabilityModal({ isOpen, onClose, teacher }: TeacherAv
       if (foundUser.name) return foundUser.name;
     }
 
-    return isAr 
-      ? (student.nameAr || 'عبد الرحمن بن خالد العتيبي') 
+    return isAr
+      ? (student.nameAr || 'عبد الرحمن بن خالد العتيبي')
       : (student.nameEn || 'Abdulrahman Al-Otaibi');
   };
 
   // Find teacher's upcoming scheduled lessons
-  const upcomingTeacherLessons = lessons.filter(l => 
+  const upcomingTeacherLessons = lessons.filter(l =>
     (l.teacherId === teacher.id || l.teacherNameAr === teacher.nameAr) &&
     l.status === 'SCHEDULED'
   );
 
   // Detect conflicting lessons that fall outside proposed slots OR outside selected days
   const conflictingLessons = upcomingTeacherLessons.filter(l => {
-    const lessonTimeClean = l.time.split(' ')[0]; // e.g. "12:00"
     const lessonDay = getDayNameArFromDateStr(l.date);
-    const isTimeConflict = !proposedSlots.includes(lessonTimeClean);
-    const isDayConflict = Boolean(lessonDay && !selectedDays.includes(lessonDay));
-    return isTimeConflict || isDayConflict;
+    return !lessonDay || !lessonFitsAvailability(l.time, l.durationMinutes || 5, nextAvailability[lessonDay] || []);
   });
 
   const toggleDay = (day: string) => {
@@ -208,34 +110,49 @@ export function TeacherAvailabilityModal({ isOpen, onClose, teacher }: TeacherAv
     }
   };
 
-  const handleSaveSubmit = (e: React.FormEvent) => {
+  const handleSaveSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
-    if (updateTeacherAvailability) {
-      updateTeacherAvailability(
-        teacher.id,
-        computedStart,
-        computedEnd,
-        selectedDays,
-        proposedSlots,
-        resolutionOption
-      );
+
+    const hasInvalidRanges = selectedDays.some(day => {
+      const ranges = [...(availabilityByDay[day] || [])].sort((a, b) => a.start.localeCompare(b.start));
+      return !ranges.length || ranges.length > 10 || ranges.some(range => range.start >= range.end) || ranges.some((range, index) => index > 0 && ranges[index - 1].end > range.start);
+    });
+    if (!selectedDays.length || hasInvalidRanges) {
+      setAvailabilityError(isAr ? 'أضف فترة صحيحة واحدة على الأقل لكل يوم محدد، وتأكد من عدم تداخل الفترات.' : 'Add a valid range for every selected day and make sure ranges do not overlap.');
+      return;
     }
+    setAvailabilityError('');
+
+    setIsSaving(true);
+    let result: Awaited<ReturnType<typeof updateTeacherAvailability>>;
+    try {
+      result = await updateTeacherAvailability(teacher.id, nextAvailability, resolutionOption);
+    } catch {
+      setAvailabilityError(isAr ? 'تعذر حفظ الأوقات. حاول مرة أخرى.' : 'Could not save availability. Please try again.');
+      return;
+    } finally {
+      setIsSaving(false);
+    }
+    if (!result.success) {
+      setAvailabilityError(result.error || (isAr ? 'تعذر حفظ الأوقات. حاول مرة أخرى.' : 'Could not save availability. Please try again.'));
+      return;
+    }
+    const conflictCount = result.conflictCount ?? conflictingLessons.length;
 
     setIsSaved(true);
-    if (conflictingLessons.length > 0) {
+    if (conflictCount > 0) {
       if (resolutionOption === 'KEEP_EXISTING') {
-        setSummaryMsg(isAr 
-          ? `تم تحديث أيام وساعات العمل بنجاح! تم الحفاظ على ${conflictingLessons.length} حصص مجدولة سابقة كما هي، وتطبيق التعديل على الحجوزات المستقبلية.`
-          : `Schedule updated! Kept ${conflictingLessons.length} existing scheduled classes intact.`);
+        setSummaryMsg(isAr
+          ? `تم تحديث الجدول! احتفظنا بـ ${conflictCount} حصة قائمة دون تغيير.`
+          : `Schedule updated. Kept ${conflictCount} existing classes unchanged.`);
       } else if (resolutionOption === 'CANCEL_AND_REFUND_CREDIT') {
-        setSummaryMsg(isAr 
-          ? `تم تحديث الجدول وإلغاء ${conflictingLessons.length} حصص متعارضة مع إعادة حصص تعويضية مجانية لرصيد الطلاب وإرسال إشعار فوري لهم.`
-          : `Schedule updated! Cancelled ${conflictingLessons.length} conflicting classes and credited student balances with free replacement lessons.`);
+        setSummaryMsg(isAr
+          ? `تم تحديث الجدول وإلغاء ${conflictCount} حصة متعارضة وإضافة رصيد تعويضي للطلاب.`
+          : `Schedule updated. Cancelled ${conflictCount} conflicting classes and added replacement credits.`);
       } else {
-        setSummaryMsg(isAr 
-          ? `تم تحديث الجدول ووسم ${conflictingLessons.length} حصص متعارضة بطلب إعادة الجدولة وإرسال إشعار فوري للطلاب.`
-          : `Schedule updated & sent reschedule notices for ${conflictingLessons.length} classes.`);
+        setSummaryMsg(isAr
+          ? `تم تحديث الجدول وإشعار الطلاب أصحاب ${conflictCount} حصة متعارضة لإعادة جدولتها.`
+          : `Schedule updated. Notified students about ${conflictCount} conflicting classes.`);
       }
     } else {
       setSummaryMsg(isAr ? 'تم تحديث أوقات وأيام العمل بنجاح بدون أي تعارض!' : 'Working schedule updated successfully with zero conflicts!');
@@ -248,9 +165,9 @@ export function TeacherAvailabilityModal({ isOpen, onClose, teacher }: TeacherAv
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in">
+    <AccessibleModal onClose={onClose} aria-label={isAr ? "أوقات عمل المعلم" : "Teacher availability"} className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in">
       <div className="bg-white rounded-3xl max-w-2xl w-full p-6 sm:p-8 shadow-2xl border border-slate-100 space-y-6 relative max-h-[90vh] overflow-y-auto scrollbar-none">
-        
+
         {/* Header */}
         <div className="flex items-center justify-between border-b border-slate-100 pb-4">
           <div className="flex items-center gap-3">
@@ -259,10 +176,10 @@ export function TeacherAvailabilityModal({ isOpen, onClose, teacher }: TeacherAv
             </div>
             <div>
               <h3 className="font-black text-lg text-slate-900">
-                {isAr ? 'إدارة أوقات وأيام العمل المتاحة للمعلم' : 'Manage Scholar Flexible Working Hours'}
+                {isAr ? 'أوقات الحجز' : 'Booking availability'}
               </h3>
               <p className="text-xs text-slate-500 font-semibold">
-                {isAr ? 'تخصيص الفترات الصباحية والمسائية وأيام التسميع الأسبوعية' : 'Configure custom shift timings (Morning, Afternoon, Evening) and weekdays'}
+                {isAr ? 'اختر أيام العمل وساعات استقبال الحصص.' : 'Choose your working days and class hours.'}
               </p>
             </div>
           </div>
@@ -282,9 +199,9 @@ export function TeacherAvailabilityModal({ isOpen, onClose, teacher }: TeacherAv
           </div>
         ) : (
           <form onSubmit={handleSaveSubmit} className="space-y-6 text-xs">
-            
+
             {/* WEEKDAYS SELECTOR */}
-            <div className="space-y-3 bg-slate-50 p-4 rounded-2xl border border-slate-200">
+              <div className="space-y-3 bg-slate-50 p-4 rounded-2xl border border-slate-200">
               <div className="flex items-center justify-between">
                 <label className="font-extrabold text-slate-900 block text-sm flex items-center gap-2">
                   <Calendar className="w-4 h-4 text-emerald-700" />
@@ -304,8 +221,8 @@ export function TeacherAvailabilityModal({ isOpen, onClose, teacher }: TeacherAv
                       type="button"
                       onClick={() => toggleDay(dayAr)}
                       className={`py-2.5 px-1 rounded-xl font-black text-xs transition-all flex flex-col items-center gap-1 cursor-pointer ${
-                        isSelected 
-                          ? 'emerald-gradient-bg text-white shadow-xs scale-[1.02]' 
+                        isSelected
+                          ? 'emerald-gradient-bg text-white shadow-xs scale-[1.02]'
                           : 'bg-white border border-slate-200 text-slate-500 hover:bg-slate-100'
                       }`}
                     >
@@ -317,179 +234,44 @@ export function TeacherAvailabilityModal({ isOpen, onClose, teacher }: TeacherAv
               </div>
             </div>
 
-            {/* TIMING MODE SELECTOR TABS */}
-            <div className="space-y-3 bg-slate-50 p-4.5 rounded-2xl border border-slate-200">
-              <div className="flex items-center justify-between">
-                <label className="font-extrabold text-slate-900 block text-sm flex items-center gap-2">
-                  <Clock className="w-4 h-4 text-emerald-700" />
-                  <span>{isAr ? 'نظام تحديد أوقات الدوام اليومي:' : 'Daily Schedule Timing Mode:'}</span>
-                </label>
-              </div>
-
-              {/* Mode Toggle Buttons */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 bg-white p-1 rounded-2xl border border-slate-200">
-                <button
-                  type="button"
-                  onClick={() => setTimingMode('STANDARD')}
-                  className={`p-3 rounded-xl font-extrabold text-xs transition-all flex items-center justify-center gap-2 cursor-pointer ${
-                    timingMode === 'STANDARD'
-                      ? 'emerald-gradient-bg text-white shadow-xs'
-                      : 'text-slate-600 hover:bg-slate-100'
-                  }`}
-                >
-                  <Clock className="w-4 h-4" />
-                  <span>{isAr ? 'دوام موحّد (نطاق زمني مستمر)' : 'Continuous Time Range'}</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setTimingMode('FLEXIBLE_SHIFTS')}
-                  className={`p-3 rounded-xl font-extrabold text-xs transition-all flex items-center justify-center gap-2 cursor-pointer ${
-                    timingMode === 'FLEXIBLE_SHIFTS'
-                      ? 'emerald-gradient-bg text-white shadow-xs'
-                      : 'text-slate-600 hover:bg-slate-100'
-                  }`}
-                >
-                  <Sliders className="w-4 h-4 text-amber-300" />
-                  <span>{isAr ? 'فترات دوام متعددة ومخصصة (مرن)' : 'Multiple Flexible Shifts (Custom)'}</span>
-                </button>
-              </div>
-
-              {/* STANDARD MODE INPUTS */}
-              {timingMode === 'STANDARD' && (
-                <div className="pt-3 space-y-3 animate-fade-in">
-                  <p className="text-[11px] text-slate-500 font-medium">
-                    {isAr 
-                      ? 'اختر وقت بداية ونهاية الدوام اليومي المستمر (مثل: من 12:00 ظهراً إلى 06:00 مساءً):' 
-                      : 'Choose continuous daily start and end working hours:'}
-                  </p>
-
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-1">
-                      <span className="text-slate-600 font-bold block">{isAr ? 'بداية الدوام:' : 'Start Time:'}</span>
-                      <select
-                        value={startHour}
-                        onChange={(e) => setStartHour(e.target.value)}
-                        className="w-full p-3 rounded-xl border border-slate-300 bg-white font-mono text-xs font-bold text-slate-900 focus:border-emerald-600 cursor-pointer"
-                      >
-                        {ALL_HOURS_OPTIONS.map(h => (
-                          <option key={h} value={h}>{formatTime12h(h, isAr)}</option>
-                        ))}
-                      </select>
-                    </div>
-
-                    <div className="space-y-1">
-                      <span className="text-slate-600 font-bold block">{isAr ? 'نهاية الدوام:' : 'End Time:'}</span>
-                      <select
-                        value={endHour}
-                        onChange={(e) => setEndHour(e.target.value)}
-                        className="w-full p-3 rounded-xl border border-slate-300 bg-white font-mono text-xs font-bold text-slate-900 focus:border-emerald-600 cursor-pointer"
-                      >
-                        {ALL_HOURS_OPTIONS.map(h => (
-                          <option key={h} value={h}>{formatTime12h(h, isAr)}</option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* FLEXIBLE MULTI-SHIFT MODE INPUTS */}
-              {timingMode === 'FLEXIBLE_SHIFTS' && (
-                <div className="pt-3 space-y-4 animate-fade-in">
-                  <div className="flex items-center justify-between">
-                    <p className="text-[11px] text-slate-600 font-semibold leading-relaxed">
-                      {isAr 
-                        ? 'يمكنك تحديد فترات عمل متفرقة خلال اليوم (مثل: صباحاً من 6-9، ظهراً من 11-3، ومساءً من 9-11):' 
-                        : 'Specify multiple non-contiguous working shifts during the day:'}
-                    </p>
-
-                    <button
-                      type="button"
-                      onClick={addCustomShift}
-                      className="px-3 py-1.5 rounded-xl gold-gradient-bg text-emerald-950 font-black text-xs shadow-xs hover:brightness-105 transition-all flex items-center gap-1 cursor-pointer shrink-0"
-                    >
-                      <Plus className="w-3.5 h-3.5 stroke-[3]" />
-                      <span>{isAr ? '+ إضافة فترة عمل' : '+ Add Shift'}</span>
-                    </button>
-                  </div>
-
-                  {/* Shifts List */}
-                  <div className="space-y-2.5">
-                    {customShifts.map((shift, idx) => (
-                      <div 
-                        key={shift.id} 
-                        className="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-2xs space-y-2 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
-                      >
-                        {/* Shift Title */}
-                        <div className="flex items-center gap-2 font-bold text-slate-800 min-w-[150px]">
-                          {idx === 0 ? <Sunrise className="w-4 h-4 text-amber-500 shrink-0" /> : idx === 1 ? <Sun className="w-4 h-4 text-emerald-600 shrink-0" /> : <Moon className="w-4 h-4 text-indigo-500 shrink-0" />}
-                          <input
-                            type="text"
-                            value={isAr ? shift.nameAr : shift.nameEn}
-                            onChange={(e) => updateShift(shift.id, isAr ? 'nameAr' : 'nameEn', e.target.value)}
-                            placeholder={isAr ? 'اسم الفترة' : 'Shift Name'}
-                            className="bg-slate-50 border border-slate-200 px-2.5 py-1.5 rounded-lg text-xs font-bold text-slate-900 w-full focus:ring-1 focus:ring-emerald-500"
-                          />
-                        </div>
-
-                        {/* Shift Start & End Dropdowns */}
-                        <div className="flex items-center gap-2 flex-1 justify-end">
-                          <div className="flex items-center gap-1.5">
-                            <span className="text-[11px] text-slate-500 font-semibold">{isAr ? 'من:' : 'From:'}</span>
-                            <select
-                              value={shift.start}
-                              onChange={(e) => updateShift(shift.id, 'start', e.target.value)}
-                              className="bg-slate-50 border border-slate-200 px-2.5 py-1.5 rounded-xl font-mono text-xs font-extrabold text-slate-900 cursor-pointer"
-                            >
-                              {ALL_HOURS_OPTIONS.map(h => (
-                                <option key={h} value={h}>{formatTime12h(h, isAr)}</option>
-                              ))}
-                            </select>
-                          </div>
-
-                          <div className="flex items-center gap-1.5">
-                            <span className="text-[11px] text-slate-500 font-semibold">{isAr ? 'إلى:' : 'To:'}</span>
-                            <select
-                              value={shift.end}
-                              onChange={(e) => updateShift(shift.id, 'end', e.target.value)}
-                              className="bg-slate-50 border border-slate-200 px-2.5 py-1.5 rounded-xl font-mono text-xs font-extrabold text-slate-900 cursor-pointer"
-                            >
-                              {ALL_HOURS_OPTIONS.map(h => (
-                                <option key={h} value={h}>{formatTime12h(h, isAr)}</option>
-                              ))}
-                            </select>
-                          </div>
-
-                          {/* Remove Shift Button */}
-                          {customShifts.length > 1 && (
-                            <button
-                              type="button"
-                              onClick={() => removeShift(shift.id)}
-                              className="p-2 rounded-xl text-rose-500 hover:bg-rose-50 hover:text-rose-700 transition-colors cursor-pointer mr-1"
-                              title={isAr ? 'حذف الفترة' : 'Remove Shift'}
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          )}
-                        </div>
+            <div className="space-y-3 bg-slate-50 p-4 rounded-2xl border border-slate-200">
+              <label className="font-extrabold text-slate-900 text-sm flex items-center gap-2">
+                <Clock className="w-4 h-4 text-emerald-700" />
+                <span>{isAr ? 'ساعات العمل' : 'Working hours'}</span>
+              </label>
+              <p className="text-xs text-slate-500">
+                {isAr ? 'حدد فترات مختلفة لكل يوم، مثل الصباح يوم الأحد والمساء يوم الإثنين.' : 'Set different windows for each day, such as mornings on Sunday and evenings on Monday.'}
+              </p>
+              <div className="space-y-3">
+                {selectedDays.map(day => {
+                  const ranges = availabilityByDay[day] || [];
+                  return <div key={day} className="space-y-2 rounded-lg border border-slate-200 bg-white p-3">
+                    <h4 className="text-sm font-semibold text-slate-900">{isAr ? day : WEEKDAYS_EN[WEEKDAYS_AR.indexOf(day)]}</h4>
+                    {ranges.map((range, index) => (
+                      <div key={index} className="grid grid-cols-[1fr_1fr_auto] items-end gap-2">
+                        <label className="space-y-1 text-xs font-semibold text-slate-600">
+                          <span>{isAr ? 'من' : 'From'}</span>
+                          <select value={range.start} onChange={event => setAvailabilityByDay(current => ({ ...current, [day]: current[day].map((item, itemIndex) => itemIndex === index ? { ...item, start: event.target.value } : item) }))} className="w-full rounded-md border border-slate-200 p-2 font-mono text-sm text-slate-900">
+                            {ALL_HOURS_OPTIONS.map(time => <option key={time} value={time}>{formatTime12h(time, isAr)}</option>)}
+                          </select>
+                        </label>
+                        <label className="space-y-1 text-xs font-semibold text-slate-600">
+                          <span>{isAr ? 'إلى' : 'To'}</span>
+                          <select value={range.end} onChange={event => setAvailabilityByDay(current => ({ ...current, [day]: current[day].map((item, itemIndex) => itemIndex === index ? { ...item, end: event.target.value } : item) }))} className="w-full rounded-md border border-slate-200 p-2 font-mono text-sm text-slate-900">
+                            {ALL_HOURS_OPTIONS.map(time => <option key={time} value={time}>{formatTime12h(time, isAr)}</option>)}
+                          </select>
+                        </label>
+                        <button type="button" aria-label={isAr ? 'حذف الفترة' : 'Remove time range'} onClick={() => setAvailabilityByDay(current => ({ ...current, [day]: current[day].filter((_, itemIndex) => itemIndex !== index) }))} className="rounded-md border border-slate-200 px-3 py-2 text-sm text-slate-600 hover:bg-red-50 hover:text-red-700">{isAr ? 'حذف' : 'Remove'}</button>
                       </div>
                     ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Slots Summary Preview */}
-              <div className="bg-emerald-50/80 p-3.5 rounded-2xl border border-emerald-200/80 text-[11px] text-emerald-950 font-medium space-y-1">
-                <span className="font-extrabold block text-emerald-900">
-                  {isAr 
-                    ? `إجمالي الساعات المتاحة المستخرجة للطلاب (${proposedSlots.length} أوقات):` 
-                    : `Total Available Slots Combined (${proposedSlots.length} slots):`}
-                </span>
-                <p className="font-mono font-bold text-emerald-900 leading-relaxed">
-                  {proposedSlots.length > 0 ? proposedSlots.map(s => formatTime12h(s, isAr)).join(' • ') : (isAr ? 'يرجى تحديد أوقات عمل صالحة' : 'No slots generated')}
-                </p>
+                    <button type="button" disabled={ranges.length >= 10} onClick={() => setAvailabilityByDay(current => ({ ...current, [day]: [...(current[day] || []), { start: '12:00', end: '14:00' }] }))} className="rounded-lg border border-emerald-800 px-3 py-2 text-sm font-semibold text-emerald-800 hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-50">
+                      {isAr ? '+ إضافة فترة' : '+ Add time range'}
+                    </button>
+                    <p className="text-xs text-slate-500">{isAr ? `مواعيد البداية: ${proposedSlotsByDay[day]?.length || 0}` : `Available starts: ${proposedSlotsByDay[day]?.length || 0}`}</p>
+                  </div>;
+                })}
               </div>
+              {availabilityError && <p role="alert" className="text-sm font-medium text-red-700">{availabilityError}</p>}
             </div>
 
             {/* CONFLICT ANALYSIS DISPLAY */}
@@ -606,9 +388,10 @@ export function TeacherAvailabilityModal({ isOpen, onClose, teacher }: TeacherAv
 
               <button
                 type="submit"
-                className="px-6 py-2.5 rounded-xl gold-gradient-bg text-emerald-950 font-black shadow-md hover:brightness-105 transition-all cursor-pointer"
+                disabled={isSaving}
+                className="px-6 py-2.5 rounded-xl gold-gradient-bg text-emerald-950 font-black shadow-md hover:brightness-105 transition-all cursor-pointer disabled:cursor-wait disabled:opacity-60"
               >
-                {isAr ? 'حفظ وتطبيق جدول العمل الجديد' : 'Save & Apply New Working Schedule'}
+                {isSaving ? (isAr ? 'جارٍ الحفظ…' : 'Saving…') : (isAr ? 'حفظ وتطبيق جدول العمل الجديد' : 'Save & Apply New Working Schedule')}
               </button>
             </div>
 
@@ -616,6 +399,6 @@ export function TeacherAvailabilityModal({ isOpen, onClose, teacher }: TeacherAv
         )}
 
       </div>
-    </div>
+    </AccessibleModal>
   );
 }

@@ -3,13 +3,14 @@
 import React from 'react';
 import { useApp } from '../context/AppContext';
 import { SubscriptionPlan } from '../types';
-import { CheckCircle2, Sparkles, Clock, Video, Award, Star, ArrowRight, ArrowLeft } from 'lucide-react';
+import { CheckCircle2, Award, Star, ArrowRight, ArrowLeft } from 'lucide-react';
 
 interface PlansGridProps {
   onSelectPlan?: (plan: SubscriptionPlan) => void;
+  actionLabel?: { ar: string; en: string };
 }
 
-export const PlansGrid: React.FC<PlansGridProps> = ({ onSelectPlan }) => {
+export const PlansGrid: React.FC<PlansGridProps> = ({ onSelectPlan, actionLabel }) => {
   const { language, plans, setSelectedPlanForCheckout } = useApp();
   const isAr = language === 'ar';
 
@@ -24,7 +25,7 @@ export const PlansGrid: React.FC<PlansGridProps> = ({ onSelectPlan }) => {
   return (
     <section id="plans" className="py-12 bg-slate-50/50">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-8">
-        
+
         {/* Section Header */}
         <div className="text-center max-w-3xl mx-auto space-y-3">
           <h2 className="text-3xl sm:text-4xl font-black text-emerald-950 tracking-tight">
@@ -102,7 +103,7 @@ export const PlansGrid: React.FC<PlansGridProps> = ({ onSelectPlan }) => {
                         : 'emerald-gradient-bg text-white hover:opacity-95'
                     }`}
                   >
-                    <span>{isAr ? 'اختيار الخطة والتحويل البنكي' : 'Select Plan & Bank Transfer'}</span>
+                    <span>{actionLabel ? (isAr ? actionLabel.ar : actionLabel.en) : (isAr ? 'اختيار الخطة والتحويل البنكي' : 'Select Plan & Bank Transfer')}</span>
                     {isAr ? <ArrowLeft className="w-4 h-4" /> : <ArrowRight className="w-4 h-4" />}
                   </button>
                 </div>

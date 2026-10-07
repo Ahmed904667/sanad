@@ -1,11 +1,13 @@
 'use client';
 
+import { AccessibleModal } from './AccessibleModal';
+
 import React from 'react';
 import { useRouter } from 'next/navigation';
 import { Lesson, Role } from '../types';
 import { useApp } from '../context/AppContext';
 import { AvatarBadge } from './AvatarBadge';
-import { X, Calendar as CalendarIcon, Clock, Video, ArrowRight, ArrowLeft, ChevronRight, BookOpen } from 'lucide-react';
+import { X, Calendar as CalendarIcon, Clock, ChevronRight } from 'lucide-react';
 
 interface DaySummaryModalProps {
   dateStr: string;
@@ -32,11 +34,11 @@ export const DaySummaryModal: React.FC<DaySummaryModalProps> = ({
   };
 
   return (
-    <div 
+    <AccessibleModal onClose={onClose} aria-label={isAr ? "حصص اليوم" : "Day classes"}
       className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-md transition-opacity"
       onClick={onClose}
     >
-      <div 
+      <div
         className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-100 relative max-h-[85vh] overflow-y-auto transform transition-all scale-100"
         onClick={(e) => e.stopPropagation()}
       >
@@ -114,6 +116,6 @@ export const DaySummaryModal: React.FC<DaySummaryModalProps> = ({
         )}
 
       </div>
-    </div>
+    </AccessibleModal>
   );
 };

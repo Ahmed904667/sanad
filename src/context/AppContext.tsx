@@ -1,70 +1,38 @@
 'use client';
 
-import React, { createContext, useContext, useState, useEffect } from 'react';
-import { 
-  Language, 
-  Role, 
-  StudentProfile, 
-  TeacherProfile, 
-  SubscriptionPlan, 
-  Teacher, 
-  Lesson, 
-  Review, 
-  NotificationItem, 
+import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
+import {
+  Language,
+  Role,
+  StudentProfile,
+  TeacherProfile,
+  SubscriptionPlan,
+  Teacher,
+  Lesson,
+  Review,
+  NotificationItem,
   BankInfo,
   AuthUser,
-  VerificationStatus,
   TeacherApprovalStatus,
   StudentQuranGoal,
   UserAccount,
-  SubscriptionChangeType
 } from '../types';
 
-import { 
-  INITIAL_PLANS, 
-  INITIAL_TEACHERS, 
-  INITIAL_STUDENT, 
-  INITIAL_TEACHER_PROFILE, 
-  INITIAL_LESSONS, 
-  INITIAL_REVIEWS, 
-  INITIAL_NOTIFICATIONS,
-  BANK_INFO 
+import {
+  INITIAL_PLANS,
+  INITIAL_TEACHERS,
+  BANK_INFO
 } from '../data/mockData';
 
-import { 
-  QURAN_SURAHS, 
-  partitionSurahsAcrossClasses, 
-  partitionJuzAcrossClasses 
+import {
+  QURAN_SURAHS,
+  partitionSurahsAcrossClasses,
+  partitionJuzAcrossClasses
 } from '../data/quranData';
+import type { ClassPlanSegment } from '../data/mushafPageData';
 
-const DEFAULT_ACCOUNTS: UserAccount[] = [
-  {
-    id: INITIAL_STUDENT.id,
-    name: INITIAL_STUDENT.nameAr,
-    email: INITIAL_STUDENT.email.toLowerCase(),
-    password: '123456',
-    gender: 'MALE',
-    role: 'STUDENT',
-    phone: INITIAL_STUDENT.phone,
-    studentProfile: INITIAL_STUDENT
-  },
-  {
-    id: 'tech-sulami',
-    name: 'الشيخ أ.د. إبراهيم السلمي',
-    email: 'sulami@sanad.com',
-    password: '123456',
-    gender: 'MALE',
-    role: 'TEACHER'
-  },
-  {
-    id: 'adm-001',
-    name: 'مدير النظام الفني',
-    email: 'admin@sanad.com',
-    password: '123456',
-    gender: 'MALE',
-    role: 'ADMIN'
-  }
-];
+const EMPTY_STUDENT: StudentProfile = { id: '', nameAr: '', nameEn: '', email: '', phone: '', verificationStatus: 'UNVERIFIED', activePlanId: null, assignedTeacherId: null, remainingLessons: 0, totalLessonsCompleted: 0, totalHoursLearned: 0 };
+const EMPTY_TEACHER: TeacherProfile = { id: '', nameAr: '', nameEn: '', email: '', phone: '', titleAr: '', titleEn: '', rating: 0, reviewsCount: 0, ijazahDetailsAr: '', ijazahDetailsEn: '', experienceYears: 0, languagesSpoken: [], specializationsAr: [], specializationsEn: [], bioAr: '', bioEn: '', hourlyRateSar: 0, availableSlots: [], workingHoursStart: '12:00', workingHoursEnd: '18:00', bookedTimeSlots: [], gender: 'MALE', approvalStatus: 'PENDING_ADMIN', totalStudents: 0, totalHoursTaught: 0, ratingAvg: 0, ijazahChainAr: '', ijazahChainEn: '' };
 
 interface AppContextType {
   isHydrated: boolean;
@@ -74,7 +42,7 @@ interface AppContextType {
   role: Role;
   setRole: (role: Role) => void;
   currentUser: AuthUser | null;
-  
+
   student: StudentProfile;
   teacherProfile: TeacherProfile;
   plans: SubscriptionPlan[];
@@ -88,15 +56,15 @@ interface AppContextType {
   setSelectedTeacherForBooking: (teacher: Teacher | null) => void;
   selectedPlanForCheckout: SubscriptionPlan | null;
   setSelectedPlanForCheckout: (plan: SubscriptionPlan | null) => void;
-  
+
   // Auth Actions
-  login: (identifier: string, pass: string) => { success: boolean; role?: Role; status?: TeacherApprovalStatus; error?: string };
-  logout: () => void;
+  login: (identifier: string, pass: string) => Promise<{ success: boolean; role?: Role; status?: TeacherApprovalStatus; error?: string }>;
+  logout: () => Promise<void>;
   registerStudentAccount: (
-    name: string, 
-    email: string, 
-    gender?: 'MALE' | 'FEMALE', 
-    phone?: string, 
+    name: string,
+    email: string,
+    gender?: 'MALE' | 'FEMALE',
+    phone?: string,
     password?: string,
     onboardingData?: {
       planId: string;
@@ -107,250 +75,137 @@ interface AppContextType {
       birthDate?: string;
       initialLessons?: Lesson[];
     }
-  ) => string;
+  ) => Promise<string>;
   applyAsTeacher: (
-    name: string, 
-    email: string, 
-    gender?: 'MALE' | 'FEMALE', 
-    ijazahDetails?: string, 
-    specializations?: string[], 
+    name: string,
+    email: string,
+    gender?: 'MALE' | 'FEMALE',
+    ijazahDetails?: string,
+    specializations?: string[],
     password?: string,
     phone?: string,
     birthDate?: string
-  ) => void;
-  
+  ) => Promise<void>;
+
   // Admin Actions
-  approveTeacherByAdmin: (teacherId: string) => void;
-  rejectTeacherByAdmin: (teacherId: string) => void;
+  approveTeacherByAdmin: (teacherId: string) => Promise<void>;
+  rejectTeacherByAdmin: (teacherId: string) => Promise<void>;
 
   // Student Actions
-  submitPaymentReceipt: (planId: string, teacherId: string, receiptFile: string, bankRef: string) => void;
-  resubmitPaymentReceipt: (receiptFile: string, bankRef: string, planIdOverride?: string) => void;
-  scheduleNextCyclePlan: (planId: string) => void;
-  purchaseExtraClass: (receiptFile: string, bankRef: string, quantity?: number) => void;
-  scheduleExtraLesson: (date: string, time: string, surahTarget: string, teacherId?: string) => void;
-  updateStudentQuranGoal: (goal: StudentQuranGoal) => void;
-  setGeneratedPlanLessons: (newLessons: Lesson[], studentIdOverride?: string) => void;
-  updateUpcomingPlanLessons: (newUpcomingLessons: Lesson[], studentIdOverride?: string) => void;
-  rescheduleLesson: (lessonId: string, newDate: string, newTimeStr: string) => void;
-  pauseSubscription: (reason?: string) => void;
-  resumeSubscription: () => void;
-  cancelSubscription: () => void;
+  submitPaymentReceipt: (planId: string, teacherId: string, receiptFile: string, bankRef: string) => Promise<void>;
+  resubmitPaymentReceipt: (receiptFile: string, bankRef: string, planIdOverride?: string) => Promise<void>;
+  scheduleNextCyclePlan: (planId: string) => Promise<void>;
+  purchaseExtraClass: (receiptFile: string, bankRef: string, quantity?: number) => Promise<void>;
+  scheduleExtraLesson: (date: string, time: string, surahTarget: string, teacherId?: string) => Promise<void>;
+  updateStudentQuranGoal: (goal: StudentQuranGoal) => Promise<void>;
+  setGeneratedPlanLessons: (newLessons: Lesson[], studentIdOverride?: string) => Promise<boolean>;
+  updateUpcomingPlanLessons: (newUpcomingLessons: Lesson[], studentIdOverride?: string, goal?: StudentQuranGoal) => Promise<boolean>;
+  rescheduleLesson: (lessonId: string, newDate: string, newTimeStr: string) => Promise<boolean>;
+  rescheduleLessons: (updates: { lessonId: string; date: string; time: string }[]) => Promise<boolean>;
+  pauseSubscription: (reason?: string) => Promise<void>;
+  resumeSubscription: () => Promise<void>;
+  cancelSubscription: () => Promise<void>;
 
   // Teacher / Admin Actions
-  approveStudentPayment: (studentId: string) => void;
-  rejectStudentPayment: (studentId: string, reason?: string) => void;
-  toggleBlockAccount: (userId: string) => void;
-  createAccountByAdmin: (newAccount: UserAccount) => void;
+  approveStudentPayment: (studentId: string) => Promise<void>;
+  rejectStudentPayment: (studentId: string, reason?: string) => Promise<void>;
+  toggleBlockAccount: (userId: string) => Promise<void>;
+  refreshData: () => Promise<void>;
+  createAccountByAdmin: (newAccount: UserAccount, password: string) => Promise<void>;
   updateTeacherAvailability: (
-    teacherId: string, 
-    newStart: string, 
-    newEnd: string, 
-    newDays: string[],
-    newSlots: string[],
+    teacherId: string,
+    availabilityByDay: Record<string, { start: string; end: string }[]>,
     conflictResolutionOption: 'KEEP_EXISTING' | 'CANCEL_AND_REFUND_CREDIT' | 'NOTIFY_STUDENTS'
-  ) => void;
+  ) => Promise<{ success: boolean; error?: string; conflictCount?: number }>;
 
   // Lessons
-  bookLesson: (teacherId: string, date: string, time: string) => void;
-  addReview: (teacherId: string, rating: number, commentAr: string, commentEn?: string) => void;
-  updateMeetUrl: (lessonId: string, newUrl: string) => void;
-  completeLesson: (lessonId: string, notes?: string) => void;
-  cancelLesson: (lessonId: string) => void;
-  clearAllClassData: () => void;
+  bookLesson: (teacherId: string, date: string, time: string) => Promise<boolean>;
+  addReview: (teacherId: string, lessonId: string, rating: number, commentAr: string, commentEn?: string) => Promise<void>;
+  updateMeetUrl: (lessonId: string, newUrl: string) => Promise<void>;
+  completeLesson: (lessonId: string, notes?: string, scope?: string) => Promise<void>;
+  cancelLesson: (lessonId: string) => Promise<void>;
+  clearAllClassData: () => Promise<void>;
   markNotificationRead: (id: string) => void;
-  updateUserProfile: (name: string, email: string, phone: string, ijazahChain?: string) => void;
+  updateUserProfile: (name: string, email: string, phone: string, ijazahChain?: string, teacherDetails?: { title: string; experienceYears: number; languages: string; specializations: string; bio: string }) => Promise<void>;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
-export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [language, setLanguage] = useState<Language>('ar');
+export const AppProvider: React.FC<{ children: React.ReactNode; initialLanguage?: Language }> = ({ children, initialLanguage = 'ar' }) => {
+  const [language, setLanguage] = useState<Language>(initialLanguage);
   const [role, setRole] = useState<Role>('GUEST');
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
 
+  const scheduleVersion = useRef<string | null>(null);
+  const savedSchedule = useRef<Lesson[]>([]);
   const [isHydrated, setIsHydrated] = useState(false);
 
-  const [student, setStudent] = useState<StudentProfile>(INITIAL_STUDENT);
-  const [teacherProfile, setTeacherProfile] = useState<TeacherProfile>(INITIAL_TEACHER_PROFILE);
+  const [student, setStudent] = useState<StudentProfile>({ ...EMPTY_STUDENT, id: "", nameAr: "", nameEn: "", email: "", activePlanId: null, assignedTeacherId: null, remainingLessons: 0, totalLessonsCompleted: 0, totalHoursLearned: 0, verificationStatus: "UNVERIFIED", quranGoal: undefined });
+  const [teacherProfile, setTeacherProfile] = useState<TeacherProfile>({ ...EMPTY_TEACHER, id: "", nameAr: "", nameEn: "", email: "", phone: "", totalStudents: 0, totalHoursTaught: 0, rating: 0, ratingAvg: 0, reviewsCount: 0, experienceYears: 0, ijazahDetailsAr: "", ijazahDetailsEn: "", ijazahChainAr: "", ijazahChainEn: "", bioAr: "", bioEn: "" });
   const [plans] = useState<SubscriptionPlan[]>(INITIAL_PLANS);
   const [teachers, setTeachers] = useState<Teacher[]>(INITIAL_TEACHERS);
-  const [lessons, setLessons] = useState<Lesson[]>(INITIAL_LESSONS);
-  const [reviews, setReviews] = useState<Review[]>(INITIAL_REVIEWS);
-  const [notifications, setNotifications] = useState<NotificationItem[]>(INITIAL_NOTIFICATIONS);
-  const [userAccounts, setUserAccounts] = useState<UserAccount[]>(DEFAULT_ACCOUNTS);
+  const [lessons, setLessons] = useState<Lesson[]>([]);
+  const [reviews, setReviews] = useState<Review[]>([]);
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const [userAccounts, setUserAccounts] = useState<UserAccount[]>([]);
   const [selectedTeacherForBooking, setSelectedTeacherForBooking] = useState<Teacher | null>(null);
   const [selectedPlanForCheckout, setSelectedPlanForCheckout] = useState<SubscriptionPlan | null>(null);
 
-  // 1. SYNCHRONOUS IMMEDIATE CLIENT HYDRATION (0ms Delay - Eliminates flash of mock user)
-  useEffect(() => {
-    try {
-      // 1. Hydrate user accounts
-      let activeAccounts = DEFAULT_ACCOUNTS;
-      const savedAccounts = localStorage.getItem('ratel_user_accounts');
-      if (savedAccounts) {
-        const parsed = JSON.parse(savedAccounts);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          activeAccounts = parsed;
-          setUserAccounts(parsed);
-        }
-      }
+  const clearPrivateState = () => {
+    setLessons([]); setNotifications([]); setUserAccounts([]); scheduleVersion.current = null;
+    setStudent({ ...EMPTY_STUDENT, id: '', nameAr: '', nameEn: '', email: '', activePlanId: null, assignedTeacherId: null, remainingLessons: 0, totalLessonsCompleted: 0, totalHoursLearned: 0, verificationStatus: 'UNVERIFIED', quranGoal: undefined });
+    setTeacherProfile({ ...EMPTY_TEACHER, id: '', nameAr: '', nameEn: '', email: '', phone: '', totalStudents: 0, totalHoursTaught: 0, rating: 0, ratingAvg: 0, reviewsCount: 0, experienceYears: 0, bioAr: '', bioEn: '', ijazahChainAr: '', ijazahChainEn: '' });
+    setSelectedTeacherForBooking(null); setSelectedPlanForCheckout(null);
+    for (const key of ['ratel_user_accounts', 'ratel_student', 'ratel_lessons', 'ratel_notifications', 'ratel_teachers', 'ratel_reviews']) localStorage.removeItem(key);
+  };
 
-      // Hydrate teachers array
-      const savedTeachers = localStorage.getItem('ratel_teachers');
-      if (savedTeachers) {
-        try {
-          const parsed = JSON.parse(savedTeachers);
-          if (Array.isArray(parsed) && parsed.length > 0) {
-            setTeachers(parsed);
-          }
-        } catch (e) {}
-      }
+  const mapAccount = (user: Record<string, unknown>): UserAccount => {
+    const data = user.appData && typeof user.appData === 'object' ? user.appData as Record<string, unknown> : {};
+    return { id: String(user.id), name: String(user.nameAr || user.nameEn || user.email || ''), email: String(user.email || ''), gender: user.gender === 'FEMALE' ? 'FEMALE' : 'MALE', role: user.role as Role, phone: typeof user.phone === 'string' ? user.phone : undefined, isBlocked: Boolean(user.isBlocked), teacherApprovalStatus: user.teacherApprovalStatus as TeacherApprovalStatus, studentProfile: data.studentProfile as StudentProfile | undefined, teacherProfile: (data.teacherProfile || data.teacher) as TeacherProfile | undefined };
+  };
 
-      // 2. Hydrate current user & role strictly
-      let activeUser: AuthUser | null = null;
-      const savedUser = localStorage.getItem('ratel_current_user');
-      if (savedUser) {
-        try {
-          const parsed = JSON.parse(savedUser);
-          if (parsed && typeof parsed === 'object' && parsed.id && parsed.role) {
-            const validUser = parsed as AuthUser;
-            activeUser = validUser;
-            setCurrentUser(validUser);
-            setRole(validUser.role);
-          } else {
-            setCurrentUser(null);
-            setRole('GUEST');
-            localStorage.removeItem('ratel_current_user');
-            localStorage.setItem('ratel_role', 'GUEST');
-          }
-        } catch (e) {
-          setCurrentUser(null);
-          setRole('GUEST');
-          localStorage.removeItem('ratel_current_user');
-          localStorage.setItem('ratel_role', 'GUEST');
-        }
-      } else {
-        setCurrentUser(null);
-        setRole('GUEST');
-        localStorage.removeItem('ratel_current_user');
-        localStorage.setItem('ratel_role', 'GUEST');
-      }
-
-      // 3. Hydrate student profile (link to active user if available)
-      if (activeUser && activeUser.role === 'STUDENT') {
-        const matchedAcc = activeAccounts.find(a => a.id === activeUser.id || a.email.toLowerCase() === activeUser.email.toLowerCase());
-        if (matchedAcc && matchedAcc.studentProfile) {
-          setStudent(matchedAcc.studentProfile);
-        } else {
-          const savedStudent = localStorage.getItem('ratel_student');
-          if (savedStudent) setStudent(JSON.parse(savedStudent));
-        }
-      } else if (activeUser && activeUser.role === 'TEACHER') {
-        const savedTeacherProf = localStorage.getItem('ratel_teacher_profile');
-        if (savedTeacherProf) setTeacherProfile(JSON.parse(savedTeacherProf));
-      }
-
-      // 4. Hydrate lessons from local storage
-      const savedLessonsStr = localStorage.getItem('ratel_lessons');
-      if (savedLessonsStr) {
-        const parsedLessons: Lesson[] = JSON.parse(savedLessonsStr);
-        if (Array.isArray(parsedLessons)) {
-          setLessons(parsedLessons);
-        }
-      } else {
-        setLessons([]);
-      }
-    } catch (e) {
-      console.error('LocalStorage immediate hydration error:', e);
-    } finally {
-      setIsHydrated(true);
+  const loadRoleData = async (user: AuthUser & { appData?: unknown; phone?: string }) => {
+    const data = user.appData && typeof user.appData === 'object' ? user.appData as Record<string, unknown> : {};
+    if (user.role === 'STUDENT') setStudent({ ...EMPTY_STUDENT, activePlanId: null, assignedTeacherId: null, remainingLessons: 0, totalLessonsCompleted: 0, totalHoursLearned: 0, quranGoal: undefined, ...data.studentProfile as Partial<StudentProfile>, id: user.id, email: user.email, nameAr: user.nameAr, nameEn: user.nameEn, phone: user.phone || (data.studentProfile as StudentProfile | undefined)?.phone || '' });
+    if (user.role === 'TEACHER') {
+      const ownResponse = await fetch('/api/account/profile', { cache: 'no-store' });
+      if (ownResponse.ok) { const ownResult = await ownResponse.json(); if (ownResult.teacher) { data.teacher = ownResult.teacher; data.teacherProfile = ownResult.teacher; } if (ownResult.user?.phone) user.phone = ownResult.user.phone; }
+      const own = (data.teacherProfile || data.teacher || {}) as Partial<TeacherProfile>;
+      setTeacherProfile({ ...EMPTY_TEACHER, titleAr: '', titleEn: '', bioAr: '', bioEn: '', ijazahDetailsAr: '', ijazahDetailsEn: '', experienceYears: 0, languagesSpoken: [], specializationsAr: [], specializationsEn: [], ...own, id: user.id, nameAr: user.nameAr, nameEn: user.nameEn, email: user.email, phone: user.phone || own.phone || '', totalStudents: own.totalStudents || 0, totalHoursTaught: own.totalHoursTaught || 0, ratingAvg: own.rating || 0, rating: own.rating || 0, reviewsCount: own.reviewsCount || 0, ijazahChainAr: own.ijazahDetailsAr || '', ijazahChainEn: own.ijazahDetailsEn || '', approvalStatus: user.teacherApprovalStatus || 'PENDING_ADMIN' });
     }
+    const endpoints = ['/api/lessons', '/api/notifications', '/api/reviews', ...(user.role === 'ADMIN' ? ['/api/admin/accounts'] : [])];
+    const responses = await Promise.all(endpoints.map(async endpoint => {
+      const response = await fetch(endpoint, { cache: 'no-store' });
+      if (!response.ok) throw new Error('Unable to load account data. Please retry.');
+      if (endpoint === '/api/lessons') scheduleVersion.current = response.headers.get('X-Schedule-Version');
+      return response.json();
+    }));
+    setLessons(responses[0]); setNotifications(responses[1].notifications || []); setReviews(responses[2].reviews || []);
+    if (user.role === 'ADMIN') setUserAccounts((responses[3].users || []).map(mapAccount));
+    else setUserAccounts([mapAccount(user as unknown as Record<string, unknown>)]);
+  };
 
-    // 2. BACKGROUND DATABASE SYNC
-    async function syncDatabaseInBackground() {
+  useEffect(() => {
+    let cancelled = false;
+    async function hydrate() {
+      clearPrivateState();
       try {
-        const res = await fetch('/api/lessons');
-        if (res.ok) {
-          const dbLessons = await res.json();
-          if (Array.isArray(dbLessons)) {
-            setLessons(dbLessons);
-            try {
-              localStorage.setItem('ratel_lessons', JSON.stringify(dbLessons));
-            } catch (e) {}
-
-            if (dbLessons.length === 0) {
-              setStudent(prev => ({
-                ...prev,
-                extraClassCredits: 0,
-                extraPurchasedClassesCount: 0
-              }));
-            }
-          }
+        const [teacherResponse, reviewResponse, sessionResponse] = await Promise.all(['/api/teachers', '/api/reviews', '/api/auth/session'].map(url => fetch(url, { cache: 'no-store' })));
+        if (cancelled) return;
+        if (teacherResponse.ok) setTeachers((await teacherResponse.json()).teachers || []);
+        if (reviewResponse.ok) setReviews((await reviewResponse.json()).reviews || []);
+        if (sessionResponse.ok) {
+          const { user } = await sessionResponse.json();
+          if (user) { await loadRoleData(user); if (!cancelled) { setCurrentUser(user); setRole(user.role); } }
         }
-      } catch (err) {
-        console.error('Background DB sync error:', err);
-      }
+      } catch (error) { console.error('Account hydration failed:', error); clearPrivateState(); }
+      if (!cancelled) setIsHydrated(true);
     }
-    syncDatabaseInBackground();
+    void hydrate();
+    return () => { cancelled = true; };
+  // Hydrate once; private state is never recovered from browser storage.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  // PERSIST TO LOCALSTORAGE ON CHANGE & SYNC PROFILE PER ACCOUNT
-  useEffect(() => {
-    if (!isHydrated) return;
-    try {
-      localStorage.setItem('ratel_student', JSON.stringify(student));
-    } catch (e) {}
-
-    // Synchronize active student profile into userAccounts array to isolate per-account profile updates
-    setUserAccounts(prev => {
-      let changed = false;
-      const updated = prev.map(acc => {
-        if (acc.id === student.id || acc.email.toLowerCase() === student.email.toLowerCase()) {
-          if (JSON.stringify(acc.studentProfile) !== JSON.stringify(student)) {
-            changed = true;
-            return { ...acc, studentProfile: student };
-          }
-        }
-        return acc;
-      });
-      return changed ? updated : prev;
-    });
-  }, [student, isHydrated]);
-
-  useEffect(() => {
-    if (!isHydrated) return;
-    try {
-      localStorage.setItem('ratel_user_accounts', JSON.stringify(userAccounts));
-    } catch (e) {}
-  }, [userAccounts, isHydrated]);
-
-  useEffect(() => {
-    if (!isHydrated) return;
-    try {
-      localStorage.setItem('ratel_lessons', JSON.stringify(lessons));
-    } catch (e) {}
-  }, [lessons, isHydrated]);
-
-  useEffect(() => {
-    if (!isHydrated) return;
-    try {
-      localStorage.setItem('ratel_teachers', JSON.stringify(teachers));
-    } catch (e) {}
-  }, [teachers, isHydrated]);
-
-  useEffect(() => {
-    if (!isHydrated) return;
-    try {
-      if (currentUser) {
-        localStorage.setItem('ratel_current_user', JSON.stringify(currentUser));
-        localStorage.setItem('ratel_role', currentUser.role);
-      } else {
-        localStorage.removeItem('ratel_current_user');
-        localStorage.setItem('ratel_role', 'GUEST');
-      }
-    } catch (e) {}
-  }, [currentUser, isHydrated]);
 
   useEffect(() => {
     document.documentElement.lang = language;
@@ -358,127 +213,124 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, [language]);
 
   // HELPER TO SAVE LESSONS DIRECTLY TO POSTGRESQL DOCKER DB
-  const saveLessonsToDatabase = async (updatedLessons: Lesson[], targetStudentId?: string) => {
+  const saveLessonsToDatabase = async (updatedLessons: Lesson[], targetStudentId?: string, goal?: StudentQuranGoal) => {
+    if (!currentUser && !targetStudentId) return false;
+    const ownedLessons = targetStudentId
+      ? updatedLessons.filter(lesson => lesson.studentId === targetStudentId)
+      : currentUser?.role === 'ADMIN'
+      ? updatedLessons
+      : currentUser?.role === 'TEACHER'
+        ? updatedLessons.filter(lesson => lesson.teacherId === currentUser.id)
+        : updatedLessons.filter(lesson => lesson.studentId === currentUser?.id);
     try {
-      await fetch('/api/lessons', {
+      const response = await fetch('/api/lessons', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          lessons: updatedLessons,
-          studentId: targetStudentId || student.id 
+        body: JSON.stringify({
+          lessons: ownedLessons,
+          baseVersion: scheduleVersion.current,
+          quranGoal: goal,
+          studentId: targetStudentId || (currentUser?.role === 'STUDENT' ? currentUser.id : undefined),
         })
       });
+      if (!response.ok) { const result = await response.json().catch(() => ({})); throw new Error(result.error || `Lesson API returned ${response.status}`); }
+      const saved = await response.json();
+      scheduleVersion.current = saved.version || null;
+      savedSchedule.current = saved.lessons;
+      return true;
     } catch (err) {
       console.error('Failed to sync updated lessons to DB:', err);
+      return false;
+    }
+  };
+
+  const saveStudentProfileToDatabase = async (profile: StudentProfile, studentId = currentUser?.id) => {
+    if (!studentId) return;
+    const profilePayload = { quranGoal: profile.quranGoal, assignedTeacherId: profile.assignedTeacherId };
+    try {
+      const response = await fetch('/api/student/profile', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ studentId, profile: profilePayload }),
+      });
+      if (!response.ok) {
+        const result = await response.json().catch(() => null);
+        throw new Error(result?.error || 'Unable to save your learning goal.');
+      }
+    } catch (error) {
+      throw error;
     }
   };
 
   const toggleLanguage = () => {
-    setLanguage(prev => prev === 'ar' ? 'en' : 'ar');
-  };
-
-  const login = (identifier: string, pass: string) => {
-    const rawInput = identifier.trim();
-    const emailClean = rawInput.toLowerCase();
-    const phoneClean = rawInput.replace(/[\s\-\(\)\+]/g, '');
-    const passClean = pass.trim();
-
-    if (!emailClean) {
-      return { success: false, error: 'يرجى إدخال البريد الإلكتروني أو رقم الجوال' };
-    }
-
-    // 1. Search in userAccounts and DEFAULT_ACCOUNTS by email or phone
-    const foundAccount = userAccounts.find(acc => 
-      acc.email.toLowerCase() === emailClean || 
-      (acc.phone && acc.phone.replace(/[\s\-\(\)\+]/g, '') === phoneClean)
-    ) || DEFAULT_ACCOUNTS.find(acc => 
-      acc.email.toLowerCase() === emailClean || 
-      (acc.phone && acc.phone.replace(/[\s\-\(\)\+]/g, '') === phoneClean)
-    );
-
-    // 2. Search in teachers list by email or phone if account not found in userAccounts
-    const foundTeacherObj = teachers.find(t => 
-      t.email.toLowerCase() === emailClean || 
-      (t.phone && t.phone.replace(/[\s\-\(\)\+]/g, '') === phoneClean) ||
-      (foundAccount && t.id === foundAccount.id)
-    );
-
-    if (!foundAccount && !foundTeacherObj) {
-      return { success: false, error: 'اسم المستخدم أو البريد الإلكتروني غير مسجّل، يرجى التأكد من كتابة البيانات بشكل صحيح أو إنشاء حساب جديد.' };
-    }
-
-    // Password validation logic
-    const expectedPassword = foundAccount?.password || '123456';
-    if (passClean && passClean !== expectedPassword && passClean !== '123456' && passClean !== 'password123') {
-      return { success: false, error: 'كلمة المرور غير صحيحة، يرجى إعادة المحاولة' };
-    }
-
-    if (foundAccount?.isBlocked) {
-      return { success: false, error: 'تم حظر هذا الحساب من قبل إدارة المنصة. يرجى التواصل مع الدعم الفني.' };
-    }
-
-    const determinedRole: Role = foundAccount?.role || (foundTeacherObj ? 'TEACHER' : 'STUDENT');
-    const userObj: AuthUser = {
-      id: foundAccount?.id || foundTeacherObj?.id || 'usr-' + Date.now(),
-      nameAr: foundAccount?.name || foundTeacherObj?.nameAr || emailClean,
-      nameEn: foundAccount?.name || foundTeacherObj?.nameEn || emailClean,
-      email: foundAccount?.email || foundTeacherObj?.email || emailClean,
-      role: determinedRole,
-      teacherApprovalStatus: foundTeacherObj?.approvalStatus || 'APPROVED'
-    };
-
-    setCurrentUser(userObj);
-    setRole(determinedRole);
+    const nextLanguage = language === 'ar' ? 'en' : 'ar';
+    setLanguage(nextLanguage);
     try {
-      localStorage.setItem('ratel_current_user', JSON.stringify(userObj));
-      localStorage.setItem('ratel_role', determinedRole);
-    } catch (e) {}
-
-    if (determinedRole === 'STUDENT') {
-      const baseProfile = foundAccount?.studentProfile || INITIAL_STUDENT;
-      const activeStudentProfile: StudentProfile = {
-        ...baseProfile,
-        id: userObj.id,
-        nameAr: userObj.nameAr,
-        nameEn: userObj.nameEn,
-        email: userObj.email
-      };
-      setStudent(activeStudentProfile);
-      try {
-        localStorage.setItem('ratel_student', JSON.stringify(activeStudentProfile));
-      } catch (e) {}
-    } else if (determinedRole === 'TEACHER') {
-      const tTarget = foundTeacherObj || teachers[0];
-      const tProf: TeacherProfile = {
-        ...tTarget,
-        totalStudents: 18,
-        totalHoursTaught: 340,
-        ratingAvg: tTarget.rating,
-        ijazahChainAr: tTarget.ijazahDetailsAr,
-        ijazahChainEn: tTarget.ijazahDetailsEn
-      };
-      setTeacherProfile(tProf);
-      try {
-        localStorage.setItem('ratel_teacher_profile', JSON.stringify(tProf));
-      } catch (e) {}
+      const secure = window.location.protocol === 'https:' ? '; Secure' : '';
+      document.cookie = `sanad_language=${nextLanguage}; Path=/; Max-Age=31536000; SameSite=Lax${secure}`;
+    } catch (error) {
+      console.error('Language preference save failed:', error);
     }
-
-    return { success: true, role: determinedRole, status: foundTeacherObj?.approvalStatus };
   };
 
-  const logout = () => {
-    setCurrentUser(null);
-    setRole('GUEST');
+  const login = async (identifier: string, pass: string) => {
+    if (!identifier.trim() || !pass) return { success: false, error: 'Email and password are required.' };
     try {
-      localStorage.removeItem('ratel_current_user');
-      localStorage.setItem('ratel_role', 'GUEST');
-    } catch (e) {}
+      const response = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ identifier: identifier.trim(), password: pass }),
+      });
+      const result = await response.json();
+      if (!response.ok || !result.user) return { success: false, error: result.error || 'Invalid email or password.' };
+
+      const user = result.user as AuthUser & { appData?: unknown };
+      clearPrivateState();
+      await loadRoleData(user);
+      const teacherResponse = await fetch('/api/teachers', { cache: 'no-store' });
+      if (teacherResponse.ok) setTeachers((await teacherResponse.json()).teachers || []);
+      setCurrentUser(user); setRole(user.role);
+      return { success: true, role: user.role, status: user.teacherApprovalStatus };
+    } catch {
+      return { success: false, error: 'Unable to sign in right now.' };
+    }
   };
 
-  const updateUserProfile = (name: string, email: string, phone: string, ijazahChain?: string) => {
+  const refreshData = async () => {
     if (!currentUser) return;
+    const response = await fetch('/api/account/profile', { cache: 'no-store' });
+    if (!response.ok) throw new Error('Unable to refresh your account.');
+    const result = await response.json();
+    await loadRoleData(result.user);
+    if (result.teacher) setTeacherProfile({ ...result.teacher, ratingAvg: result.teacher.rating, ijazahChainAr: result.teacher.ijazahDetailsAr, ijazahChainEn: result.teacher.ijazahDetailsEn });
+  };
+
+  const logout = async () => {
+    try {
+      await fetch('/api/auth/logout', { method: 'POST' });
+    } finally {
+      setCurrentUser(null);
+      setRole('GUEST');
+      clearPrivateState();
+      setTeachers([]); setReviews([]);
+      const publicReviews = await fetch('/api/reviews', { cache: 'no-store' });
+      if (publicReviews.ok) setReviews((await publicReviews.json()).reviews || []);
+      const response = await fetch('/api/teachers', { cache: 'no-store' });
+      if (response.ok) setTeachers((await response.json()).teachers || []);
+    }
+  };
+
+  const updateUserProfile = async (name: string, email: string, phone: string, ijazahChain?: string, teacherDetails?: { title: string; experienceYears: number; languages: string; specializations: string; bio: string }) => {
+    if (!currentUser) throw new Error('Sign in to update your profile.');
     const cleanEmail = email.trim().toLowerCase();
     const cleanName = name.trim();
+    const response = await fetch('/api/account/profile', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: cleanName, email: cleanEmail, phone: phone.trim(), ijazahChain, ...teacherDetails }),
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(result.error || `Profile API returned ${response.status}`);
 
     const updatedUser: AuthUser = {
       ...currentUser,
@@ -487,9 +339,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       email: cleanEmail
     };
     setCurrentUser(updatedUser);
-    try {
-      localStorage.setItem('ratel_current_user', JSON.stringify(updatedUser));
-    } catch (e) {}
 
     if (currentUser.role === 'STUDENT') {
       setStudent(prev => ({
@@ -507,7 +356,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         email: cleanEmail,
         phone: phone.trim(),
         ijazahChainAr: ijazahChain || prev.ijazahChainAr,
-        ijazahChainEn: ijazahChain || prev.ijazahChainEn
+        ijazahChainEn: ijazahChain || prev.ijazahChainEn,
+        titleAr: teacherDetails?.title || prev.titleAr,
+        titleEn: teacherDetails?.title || prev.titleEn,
+        experienceYears: teacherDetails?.experienceYears ?? prev.experienceYears,
+        languagesSpoken: teacherDetails?.languages.split(',').map(value => value.trim()).filter(Boolean) || prev.languagesSpoken,
+        specializationsAr: teacherDetails?.specializations.split(',').map(value => value.trim()).filter(Boolean) || prev.specializationsAr,
+        bioAr: teacherDetails?.bio ?? prev.bioAr,
+        bioEn: teacherDetails?.bio ?? prev.bioEn,
       }));
       setTeachers(prev => prev.map(t => (t.id === currentUser.id || t.email.toLowerCase() === currentUser.email.toLowerCase()) ? {
         ...t,
@@ -516,7 +372,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         email: cleanEmail,
         phone: phone.trim(),
         ijazahDetailsAr: ijazahChain || t.ijazahDetailsAr,
-        ijazahDetailsEn: ijazahChain || t.ijazahDetailsEn
+        ijazahDetailsEn: ijazahChain || t.ijazahDetailsEn,
+        titleAr: teacherDetails?.title || t.titleAr,
+        titleEn: teacherDetails?.title || t.titleEn,
+        experienceYears: teacherDetails?.experienceYears ?? t.experienceYears,
+        languagesSpoken: teacherDetails?.languages.split(',').map(value => value.trim()).filter(Boolean) || t.languagesSpoken,
+        specializationsAr: teacherDetails?.specializations.split(',').map(value => value.trim()).filter(Boolean) || t.specializationsAr,
+        bioAr: teacherDetails?.bio ?? t.bioAr,
+        bioEn: teacherDetails?.bio ?? t.bioEn,
       } : t));
     }
 
@@ -540,11 +403,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }));
   };
 
-  const registerStudentAccount = (
-    name: string, 
-    email: string, 
-    gender: 'MALE' | 'FEMALE' = 'MALE', 
-    phone?: string, 
+  const registerStudentAccount = async (
+    name: string,
+    email: string,
+    gender: 'MALE' | 'FEMALE' = 'MALE',
+    phone?: string,
     password?: string,
     onboardingData?: {
       planId: string;
@@ -555,12 +418,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       birthDate?: string;
       initialLessons?: Lesson[];
     }
-  ): string => {
+  ): Promise<string> => {
     const approvedScholars = teachers.filter(t => t.approvalStatus === 'APPROVED');
-    const assignedTeacher = approvedScholars.find(t => t.id === onboardingData?.teacherId) || 
-      approvedScholars.find(t => t.gender === gender && !t.isFullyBooked) || 
-      approvedScholars[0] || 
+    const assignedTeacher = approvedScholars.find(t => t.id === onboardingData?.teacherId) ||
+      approvedScholars.find(t => t.gender === gender && !t.isFullyBooked) ||
+      approvedScholars[0] ||
       teachers[0];
+    if (!assignedTeacher) throw new Error('لا يوجد معلم معتمد متاح حالياً. يرجى المحاولة لاحقاً.');
     const emailClean = email.trim().toLowerCase();
     const phoneClean = phone ? phone.replace(/[\s\-\(\)\+]/g, '') : '';
 
@@ -582,7 +446,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const chosenPlan = plans.find(p => p.id === selectedPlanId) || plans[0];
     const isFreePlan = chosenPlan.priceMonthlySar === 0;
 
-    const newStudentId = 'std-' + Date.now();
+    let newStudentId = 'std-' + Date.now();
 
     const newStudent: StudentProfile = {
       id: newStudentId,
@@ -622,11 +486,40 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     };
 
+    const registrationResponse = await fetch('/api/auth/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name,
+        email: emailClean,
+        password,
+        gender,
+        phone,
+        role: 'STUDENT',
+        profileData: { studentProfile: newStudent },
+        initialLessons: onboardingData?.initialLessons?.filter(lesson => lesson.isOrientationSession),
+      }),
+    });
+    const registrationResult = await registrationResponse.json();
+    if (!registrationResponse.ok || !registrationResult.user) {
+      throw new Error(registrationResult.error || 'Unable to create your account.');
+    }
+    try {
+      const notificationResponse = await fetch('/api/notifications', { cache: 'no-store' });
+      if (notificationResponse.ok) {
+        const notificationResult = await notificationResponse.json();
+        if (Array.isArray(notificationResult.notifications)) setNotifications(notificationResult.notifications as NotificationItem[]);
+      }
+    } catch (error) {
+      console.error('Notification refresh failed:', error);
+    }
+    newStudentId = registrationResult.user.id;
+    newStudent.id = newStudentId;
+
     const newAcc: UserAccount = {
       id: newStudentId,
       name,
       email: emailClean,
-      password: password || '123456',
       gender,
       role: 'STUDENT',
       phone,
@@ -636,16 +529,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setUserAccounts(prev => {
       const filtered = prev.filter(a => a.email.toLowerCase() !== emailClean);
       const updated = [...filtered, newAcc];
-      try {
-        localStorage.setItem('ratel_user_accounts', JSON.stringify(updated));
-      } catch (e) {}
       return updated;
     });
 
-    setStudent(newStudent);
-    try {
-      localStorage.setItem('ratel_student', JSON.stringify(newStudent));
-    } catch (e) {}
+    await loadRoleData(registrationResult.user);
 
     const userObj: AuthUser = {
       id: newStudentId,
@@ -657,38 +544,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     setCurrentUser(userObj);
     setRole('STUDENT');
-    try {
-      localStorage.setItem('ratel_current_user', JSON.stringify(userObj));
-      localStorage.setItem('ratel_role', 'STUDENT');
-    } catch (e) {}
-
-    // Save initial generated lessons if provided
-    if (onboardingData?.initialLessons && onboardingData.initialLessons.length > 0) {
-      const formatted = onboardingData.initialLessons.map(l => ({ ...l, studentId: newStudentId }));
-      setLessons(prev => {
-        const other = prev.filter(l => l.studentId !== newStudentId);
-        const updated = [...formatted, ...other];
-        try {
-          localStorage.setItem('ratel_lessons', JSON.stringify(updated));
-        } catch (e) {}
-        saveLessonsToDatabase(updated);
-        return updated;
-      });
-    }
 
     return newStudentId;
   };
 
-  const applyAsTeacher = (
-    name: string, 
-    email: string, 
-    gender: 'MALE' | 'FEMALE' = 'MALE', 
-    ijazahDetails: string = '', 
-    specializations: string[] = [], 
+  const applyAsTeacher = async (
+    name: string,
+    email: string,
+    gender: 'MALE' | 'FEMALE' = 'MALE',
+    ijazahDetails: string = '',
+    specializations: string[] = [],
     password?: string,
     phone?: string,
     birthDate?: string
-  ) => {
+  ): Promise<void> => {
     const emailClean = email.trim().toLowerCase();
     const phoneClean = phone ? phone.replace(/[\s\-\(\)\+]/g, '') : '';
 
@@ -714,18 +583,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       birthDate: birthDate || '',
       titleAr: gender === 'FEMALE' ? 'معلمة قرآن مجازة بالسند المتصل' : 'معلم قرآن مجاز بالسند المتصل',
       titleEn: 'Certified Quran Scholar',
-      rating: 5.0,
+      rating: 0,
       reviewsCount: 0,
       ijazahDetailsAr: ijazahDetails || 'إجازة بالسند المتصل',
       ijazahDetailsEn: ijazahDetails || 'Continuous Chain Ijazah',
-      experienceYears: 5,
-      languagesSpoken: ['العربية', 'English'],
+      experienceYears: 0,
+      languagesSpoken: [],
       specializationsAr: specializations.length > 0 ? specializations : ['الإجازة بالسند المتصل'],
       specializationsEn: ['Continuous Chain Ijazah'],
       bioAr: 'معلم قرآن كريم يسعى لنشر التلاوة والحفظ المتقن.',
       bioEn: 'Quran instructor dedicated to authentic recitation.',
       hourlyRateSar: 90,
-      availableSlots: ['12:00', '17:00', '18:00'],
+      availableSlots: [],
+      availabilityRanges: [{ start: '12:00', end: '18:00' }],
       workingHoursStart: '12:00',
       workingHoursEnd: '18:00',
       bookedTimeSlots: [],
@@ -734,13 +604,43 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       approvalStatus: 'PENDING_ADMIN'
     };
 
+    const registrationResponse = await fetch('/api/auth/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name,
+        email: emailClean,
+        password,
+        gender,
+        phone,
+        birthDate,
+        ijazahDetails,
+        specializations,
+        role: 'TEACHER',
+        profileData: { teacher: newTeacher },
+      }),
+    });
+    const registrationResult = await registrationResponse.json();
+    if (!registrationResponse.ok || !registrationResult.user) {
+      throw new Error(registrationResult.error || 'Unable to submit your application.');
+    }
+    try {
+      const notificationResponse = await fetch('/api/notifications', { cache: 'no-store' });
+      if (notificationResponse.ok) {
+        const notificationResult = await notificationResponse.json();
+        if (Array.isArray(notificationResult.notifications)) setNotifications(notificationResult.notifications as NotificationItem[]);
+      }
+    } catch (error) {
+      console.error('Notification refresh failed:', error);
+    }
+    newTeacher.id = registrationResult.user.id;
+
     setTeachers(prev => [newTeacher, ...prev]);
 
     const newAcc: UserAccount = {
       id: newTeacher.id,
       name,
       email: emailClean,
-      password: password || '123456',
       gender,
       role: 'TEACHER',
       phone
@@ -749,180 +649,31 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setUserAccounts(prev => {
       const filtered = prev.filter(a => a.email.toLowerCase() !== emailClean);
       const updated = [...filtered, newAcc];
-      try {
-        localStorage.setItem('ratel_user_accounts', JSON.stringify(updated));
-      } catch (e) {}
       return updated;
     });
 
-    const userObj: AuthUser = {
-      id: newTeacher.id,
-      nameAr: name,
-      nameEn: name,
-      email: emailClean,
-      role: 'TEACHER',
-      teacherApprovalStatus: 'PENDING_ADMIN'
-    };
+    const userObj = registrationResult.user as AuthUser;
 
+    await loadRoleData(registrationResult.user);
     setCurrentUser(userObj);
     setRole('TEACHER');
   };
 
-  const approveTeacherByAdmin = (teacherId: string) => {
-    setTeachers(prev => {
-      const updated = prev.map(t => t.id === teacherId ? { ...t, approvalStatus: 'APPROVED' as const } : t);
-      try {
-        localStorage.setItem('ratel_teachers', JSON.stringify(updated));
-      } catch (e) {}
-      return updated;
-    });
-
-    setUserAccounts(prev => {
-      const updated = prev.map(a => a.id === teacherId ? { ...a, teacherApprovalStatus: 'APPROVED' as const } : a);
-      try {
-        localStorage.setItem('ratel_user_accounts', JSON.stringify(updated));
-      } catch (e) {}
-      return updated;
-    });
-
-    if (currentUser?.id === teacherId) {
-      setCurrentUser(prev => prev ? { ...prev, teacherApprovalStatus: 'APPROVED' } : null);
-    }
-
-    setNotifications(prev => [
-      {
-        id: 'notif-' + Date.now(),
-        titleAr: 'تم قبول وتفعيل حساب المعلم',
-        titleEn: 'Teacher Account Approved & Activated',
-        messageAr: 'تم الموافقة على طلب انضمامك وتفعيل حسابك كمعلم في منصة سَنَد.',
-        messageEn: 'Your scholar application has been approved and activated by admin.',
-        time: 'الآن',
-        read: false,
-        type: 'TEACHER_APPROVED' as const
-      },
-      ...prev
-    ]);
+  const updateAdminAccount = async (userId: string, patch: Record<string, unknown>) => {
+    const response = await fetch(`/api/admin/accounts/${encodeURIComponent(userId)}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(patch) });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(result.error || 'Unable to update account.');
+    if (currentUser) await loadRoleData(currentUser);
+    const teachersResponse = await fetch('/api/teachers', { cache: 'no-store' });
+    if (teachersResponse.ok) setTeachers((await teachersResponse.json()).teachers || []);
   };
+  const approveTeacherByAdmin = (teacherId: string) => updateAdminAccount(teacherId, { teacherApprovalStatus: 'APPROVED' });
+  const rejectTeacherByAdmin = (teacherId: string) => updateAdminAccount(teacherId, { teacherApprovalStatus: 'REJECTED' });
 
-  const rejectTeacherByAdmin = (teacherId: string) => {
-    setTeachers(prev => {
-      const updated = prev.map(t => t.id === teacherId ? { ...t, approvalStatus: 'REJECTED' as const } : t);
-      try {
-        localStorage.setItem('ratel_teachers', JSON.stringify(updated));
-      } catch (e) {}
-      return updated;
-    });
-
-    setUserAccounts(prev => {
-      const updated = prev.map(a => a.id === teacherId ? { ...a, teacherApprovalStatus: 'REJECTED' as const } : a);
-      try {
-        localStorage.setItem('ratel_user_accounts', JSON.stringify(updated));
-      } catch (e) {}
-      return updated;
-    });
-  };
-
-  const submitPaymentReceipt = (planId: string, teacherId: string, receiptFile: string, bankRef: string) => {
-    setStudent(prev => ({
-      ...prev,
-      verificationStatus: 'PENDING_VERIFICATION',
-      pendingPlanId: planId,
-      subscriptionChangeType: prev.verificationStatus === 'VERIFIED' ? 'RENEWAL' : 'NEW',
-      assignedTeacherId: teacherId || prev.assignedTeacherId,
-      paymentReceiptUrl: receiptFile || 'إيصال_تحويل_مصرف_الراجحي.png',
-      bankTransferRef: bankRef || 'REF-' + Math.floor(100000 + Math.random() * 900000),
-      paymentDate: new Date().toISOString().split('T')[0]
-    }));
-  };
-
-  const resubmitPaymentReceipt = (receiptFile: string, bankRef: string, planIdOverride?: string) => {
-    const activeStudentId = currentUser?.id || student.id;
-    const targetPlanId = planIdOverride || student.pendingPlanId || student.activePlanId || 'plan-standard';
-
-    let updatedProfile: StudentProfile | null = null;
-
-    setUserAccounts(prev => {
-      const updated = prev.map(acc => {
-        if (acc.id === activeStudentId || acc.studentProfile?.id === activeStudentId) {
-          const prof = acc.studentProfile || student;
-          const updatedProf: StudentProfile = {
-            ...prof,
-            verificationStatus: 'PENDING_VERIFICATION',
-            rejectionReason: undefined,
-            pendingPlanId: targetPlanId,
-            subscriptionChangeType: 'NEW',
-            paymentReceiptUrl: receiptFile || 'إيصال_تحويل_مصرف_الراجحي.png',
-            bankTransferRef: bankRef || 'REF-' + Math.floor(100000 + Math.random() * 900000),
-            paymentDate: new Date().toISOString().split('T')[0]
-          };
-          updatedProfile = updatedProf;
-          return { ...acc, studentProfile: updatedProf };
-        }
-        return acc;
-      });
-      try {
-        localStorage.setItem('ratel_user_accounts', JSON.stringify(updated));
-      } catch (e) {}
-      return updated;
-    });
-
-    setStudent(prev => {
-      const profToApply: StudentProfile = updatedProfile || {
-        ...prev,
-        verificationStatus: 'PENDING_VERIFICATION',
-        rejectionReason: undefined,
-        pendingPlanId: targetPlanId,
-        subscriptionChangeType: 'NEW',
-        paymentReceiptUrl: receiptFile || 'إيصال_تحويل_مصرف_الراجحي.png',
-        bankTransferRef: bankRef || 'REF-' + Math.floor(100000 + Math.random() * 900000),
-        paymentDate: new Date().toISOString().split('T')[0]
-      };
-      try {
-        localStorage.setItem('ratel_student', JSON.stringify(profToApply));
-      } catch (e) {}
-      return profToApply;
-    });
-
-    setNotifications(prev => [
-      {
-        id: 'notif-' + Date.now(),
-        titleAr: 'تم إعادة تقديم إيصال التحويل بنجاح',
-        titleEn: 'Receipt Resubmitted Successfully',
-        messageAr: 'تم إرسال إيصال التحويل البنكي الجديد وسوف يتم مراجعته واعتماده من قبل الإدارة قريباً.',
-        messageEn: 'Your new receipt was resubmitted and will be reviewed by admin soon.',
-        time: 'الآن',
-        read: false,
-        type: 'PLAN_SUBSCRIPTION' as const
-      },
-      ...prev
-    ]);
-  };
-
-  const scheduleNextCyclePlan = (planId: string) => {
-    const currentPlan = plans.find(p => p.id === student.activePlanId) || plans[1];
-    const newPlan = plans.find(p => p.id === planId) || plans[1];
-
-    const changeType: SubscriptionChangeType = newPlan.lessonsPerMonth > currentPlan.lessonsPerMonth
-      ? 'UPGRADE_NEXT_MONTH'
-      : 'DOWNGRADE_NEXT_MONTH';
-
-    setStudent(prev => ({
-      ...prev,
-      nextCyclePlanId: planId,
-      subscriptionChangeType: changeType
-    }));
-  };
-
-  const purchaseExtraClass = (receiptFile: string, bankRef: string, quantity: number = 1) => {
-    setStudent(prev => ({
-      ...prev,
-      verificationStatus: 'PENDING_VERIFICATION',
-      subscriptionChangeType: 'EXTRA_CLASS',
-      paymentReceiptUrl: receiptFile || 'إيصال_حصة_إضافية_20_ريال.png',
-      bankTransferRef: bankRef || 'REF-EXT-' + Math.floor(100000 + Math.random() * 900000),
-      paymentDate: new Date().toISOString().split('T')[0]
-    }));
-  };
+  const submitPaymentReceipt = (planId: string, teacherId: string, receiptFile: string, bankRef: string) => subscriptionAction('SUBMIT_PAYMENT', { planId, teacherId, receiptFile, bankRef });
+  const resubmitPaymentReceipt = (receiptFile: string, bankRef: string, planIdOverride?: string) => subscriptionAction('SUBMIT_PAYMENT', { planId: planIdOverride || student.pendingPlanId || student.activePlanId, receiptFile, bankRef });
+  const scheduleNextCyclePlan = (planId: string) => subscriptionAction('NEXT_PLAN', { planId });
+  const purchaseExtraClass = (receiptFile: string, bankRef: string, quantity = 1) => subscriptionAction('SUBMIT_PAYMENT', { kind: 'EXTRA_CLASS', receiptFile, bankRef, quantity });
 
   const repartitionStudentLessons = (
     studentProfile: StudentProfile,
@@ -931,7 +682,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   ): Lesson[] => {
     const activeStudentId = studentProfile.id;
     const qGoal = studentProfile.quranGoal;
-    
+
     const otherLessons = allLessons.filter(l => l.studentId !== activeStudentId);
     const studentAllLessons = allLessons.filter(l => l.studentId === activeStudentId);
 
@@ -956,7 +707,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return extraLessonToInsert ? [extraLessonToInsert, ...allLessons] : allLessons;
     }
 
-    let partitions: any[] = [];
+    let partitions: ClassPlanSegment[] = [];
     const targetMode = qGoal.hifzFahrasType || 'SURAH';
     const targetSurahs = qGoal.hifzSurahNumbers && qGoal.hifzSurahNumbers.length > 0 ? qGoal.hifzSurahNumbers : [2];
 
@@ -996,10 +747,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return [...updatedStudentLessons, ...otherLessons];
   };
 
-  const scheduleExtraLesson = (date: string, time: string, surahTarget?: string, teacherId?: string) => {
+  const scheduleExtraLesson = async (date: string, time: string, surahTarget?: string, teacherId?: string) => {
     const activeStudentId = currentUser?.id || student.id;
     const targetTeacher = teachers.find(t => t.id === (teacherId || student.assignedTeacherId)) || teachers[0];
 
+    if (!targetTeacher) throw new Error('Choose an available teacher.');
     const defaultTarget = student.quranGoal?.targetSurahOrJuzAr || 'الحفظ: مراجعة متقدمة وتثبيت | التلاوة: الحزب المعتمد';
 
     const newExtraLesson: Lesson = {
@@ -1012,7 +764,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       studentNameEn: student.nameEn,
       date,
       time,
-      durationMinutes: 30,
+      durationMinutes: plans.find(plan => plan.id === student.activePlanId)?.lessonDurationMinutes || plans[0].lessonDurationMinutes,
       status: 'SCHEDULED',
       googleMeetUrl: '',
       surahTargetAr: surahTarget || defaultTarget,
@@ -1020,478 +772,104 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       notes: 'حصة إضافية مدمجة ضمن الخطة التعليمية والهدف القرآني'
     };
 
-    const updatedStudentProfile: StudentProfile = {
+    const updated = repartitionStudentLessons(student, lessons, newExtraLesson);
+    if (!await saveLessonsToDatabase(updated)) throw new Error('Unable to book the extra class. Please refresh availability.');
+    setLessons(savedSchedule.current);
+    await refreshData();
+  };
+
+  const addReview = async (teacherId: string, lessonId: string, rating: number, commentAr: string, commentEn?: string) => {
+    const response = await fetch('/api/reviews', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ teacherId, lessonId, rating, commentAr, commentEn: commentEn || commentAr }),
+    });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || 'Unable to submit review.');
+    const [reviewResponse, teacherResponse] = await Promise.all([fetch('/api/reviews', { cache: 'no-store' }), fetch('/api/teachers', { cache: 'no-store' })]);
+    if (reviewResponse.ok) setReviews((await reviewResponse.json()).reviews || []);
+    if (teacherResponse.ok) setTeachers((await teacherResponse.json()).teachers || []);
+  };
+
+  const updateStudentQuranGoal = async (goal: StudentQuranGoal) => {
+    const updated: StudentProfile = {
       ...student,
-      extraClassCredits: Math.max(0, (student.extraClassCredits || 1) - 1),
-      extraPurchasedClassesCount: Math.max(1, student.extraPurchasedClassesCount || 1)
-    };
-
-    setStudent(updatedStudentProfile);
-
-    setUserAccounts(prev => {
-      const updated = prev.map(acc => {
-        if (acc.id === activeStudentId || acc.studentProfile?.id === activeStudentId) {
-          return { ...acc, studentProfile: updatedStudentProfile };
-        }
-        return acc;
-      });
-      try {
-        localStorage.setItem('ratel_user_accounts', JSON.stringify(updated));
-      } catch (e) {}
-      return updated;
-    });
-
-    try {
-      localStorage.setItem('ratel_student', JSON.stringify(updatedStudentProfile));
-    } catch (e) {}
-
-    setLessons(prev => {
-      const updated = repartitionStudentLessons(updatedStudentProfile, prev, newExtraLesson);
-      try {
-        localStorage.setItem('ratel_lessons', JSON.stringify(updated));
-      } catch (e) {}
-      saveLessonsToDatabase(updated);
-      return updated;
-    });
-  };
-
-  const addReview = (teacherId: string, rating: number, commentAr: string, commentEn?: string) => {
-    const studentNameAr = student.nameAr || currentUser?.nameAr || 'طالب';
-    const studentNameEn = student.nameEn || currentUser?.nameEn || 'Student';
-    const currentStudentId = currentUser?.id || student.id;
-
-    setReviews(prevReviews => {
-      const existingIndex = prevReviews.findIndex(
-        r => r.teacherId === teacherId && (r.studentId === currentStudentId || (currentUser?.nameAr && r.studentNameAr === currentUser.nameAr))
-      );
-
-      let updatedReviews: Review[];
-      if (existingIndex >= 0) {
-        updatedReviews = [...prevReviews];
-        updatedReviews[existingIndex] = {
-          ...updatedReviews[existingIndex],
-          rating,
-          commentAr,
-          commentEn: commentEn || commentAr,
-          date: new Date().toISOString().split('T')[0]
-        };
-      } else {
-        const newRev: Review = {
-          id: `rev-${Date.now()}`,
-          teacherId,
-          studentId: currentStudentId,
-          studentNameAr,
-          studentNameEn,
-          rating,
-          date: new Date().toISOString().split('T')[0],
-          commentAr,
-          commentEn: commentEn || commentAr
-        };
-        updatedReviews = [newRev, ...prevReviews];
-      }
-
-      try {
-        localStorage.setItem('ratel_reviews', JSON.stringify(updatedReviews));
-      } catch (e) {}
-
-      // Calculate new avg rating and reviews count for teacher
-      const teacherRevs = updatedReviews.filter(r => r.teacherId === teacherId);
-      const totalRating = teacherRevs.reduce((sum, r) => sum + r.rating, 0);
-      const newAvgRating = teacherRevs.length > 0 ? Number((totalRating / teacherRevs.length).toFixed(2)) : 5.0;
-      const newReviewsCount = teacherRevs.length;
-
-      setTeachers(prevTeachers => {
-        const newTeachers = prevTeachers.map(t => {
-          if (t.id === teacherId) {
-            return {
-              ...t,
-              rating: newAvgRating,
-              reviewsCount: newReviewsCount
-            };
-          }
-          return t;
-        });
-
-        try {
-          localStorage.setItem('ratel_teachers', JSON.stringify(newTeachers));
-        } catch (e) {}
-
-        return newTeachers;
-      });
-
-      return updatedReviews;
-    });
-  };
-
-  const updateStudentQuranGoal = (goal: StudentQuranGoal) => {
-    setStudent(prev => ({
-      ...prev,
-      assignedTeacherId: goal.assignedTeacherId || prev.assignedTeacherId,
+      assignedTeacherId: goal.assignedTeacherId || student.assignedTeacherId,
       quranGoal: goal
-    }));
-  };
-
-  const setGeneratedPlanLessons = (newLessons: Lesson[], studentIdOverride?: string) => {
-    setLessons(prev => {
-      const activeStudentId = studentIdOverride || currentUser?.id || student.id;
-      const formattedNewLessons = newLessons.map(l => ({ ...l, studentId: activeStudentId }));
-      const otherStudentsLessons = prev.filter(l => l.studentId !== activeStudentId);
-      const currentStudentCompletedLessons = prev.filter(l => l.studentId === activeStudentId && l.status === 'COMPLETED');
-      const updatedList = [...currentStudentCompletedLessons, ...formattedNewLessons, ...otherStudentsLessons];
-      try {
-        localStorage.setItem('ratel_lessons', JSON.stringify(updatedList));
-      } catch (e) {}
-      saveLessonsToDatabase(updatedList, activeStudentId);
-      return updatedList;
-    });
-  };
-
-  const updateUpcomingPlanLessons = (newUpcomingLessons: Lesson[], studentIdOverride?: string) => {
-    setStudent(prev => ({
-      ...prev,
-      extraClassCredits: 0,
-      extraPurchasedClassesCount: 0
-    }));
-
-    setLessons(prev => {
-      const activeStudentId = studentIdOverride || currentUser?.id || student.id;
-      const formattedNewUpcoming = newUpcomingLessons.map(l => ({ ...l, studentId: activeStudentId }));
-      const otherStudentsLessons = prev.filter(l => l.studentId !== activeStudentId);
-      const currentStudentCompleted = prev.filter(l => l.studentId === activeStudentId && l.status === 'COMPLETED');
-      const updatedList = [...currentStudentCompleted, ...formattedNewUpcoming, ...otherStudentsLessons];
-      try {
-        localStorage.setItem('ratel_lessons', JSON.stringify(updatedList));
-      } catch (e) {}
-      saveLessonsToDatabase(updatedList, activeStudentId);
-      return updatedList;
-    });
-  };
-
-  const rescheduleLesson = (lessonId: string, newDate: string, newTimeStr: string) => {
-    setLessons(prev => {
-      const targetLesson = prev.find(l => l.id === lessonId);
-      if (!targetLesson || targetLesson.status === 'COMPLETED') {
-        return prev; // Completed lessons are strictly locked against modification
-      }
-      const updatedList = prev.map(l => (l.id === lessonId && l.status !== 'COMPLETED') ? { ...l, date: newDate, time: newTimeStr, status: 'SCHEDULED' as const, needsRescheduling: false } : l);
-      try {
-        localStorage.setItem('ratel_lessons', JSON.stringify(updatedList));
-      } catch (e) {}
-      saveLessonsToDatabase(updatedList, targetLesson.studentId);
-      return updatedList;
-    });
-
-    setStudent(prev => ({
-      ...prev,
-      extraClassCredits: Math.max(0, (prev.extraClassCredits || 0) - 1)
-    }));
-  };
-
-  const generateSubscriptionLessonsForStudentProfile = (
-    studentProf: StudentProfile,
-    allPlans: SubscriptionPlan[],
-    allTeachers: Teacher[]
-  ): Lesson[] => {
-    const planId = studentProf.activePlanId || studentProf.pendingPlanId || 'plan-standard';
-    const plan = allPlans.find(p => p.id === planId) || allPlans[1];
-    const teacher = allTeachers.find(t => t.id === studentProf.assignedTeacherId) || allTeachers[0];
-    const qGoal = studentProf.quranGoal;
-
-    const selectedDays = (qGoal && qGoal.agreedWeeklyDaysAr && qGoal.agreedWeeklyDaysAr.length > 0)
-      ? qGoal.agreedWeeklyDaysAr
-      : ['الإثنين', 'الأربعاء'];
-    const dayTimeSlots = (qGoal && qGoal.dayTimeSlots && Object.keys(qGoal.dayTimeSlots).length > 0)
-      ? qGoal.dayTimeSlots
-      : { 'الإثنين': '12:00', 'الأربعاء': '14:00' };
-
-    const daysWeekMap: Record<string, number> = {
-      'الأحد': 0, 'الإثنين': 1, 'الثلاثاء': 2, 'الأربعاء': 3, 'الخميس': 4, 'الجمعة': 5, 'السبت': 6
     };
-
-    const totalLessonsInPlan = plan.lessonsPerMonth || 8;
-    const targetMode = qGoal?.hifzFahrasType || 'SURAH';
-    const targetSurahs = qGoal?.hifzSurahNumbers && qGoal.hifzSurahNumbers.length > 0 ? qGoal.hifzSurahNumbers : [2];
-
-    let autoCalculatedClasses: any[] = [];
-    if (targetMode === 'SURAH') {
-      const surahInputs = targetSurahs.map(num => {
-        const sObj = QURAN_SURAHS.find(s => s.number === num);
-        const custom = qGoal?.surahAyahCustomMap ? qGoal.surahAyahCustomMap[num] : undefined;
-        return {
-          number: num,
-          startAyah: custom ? custom.startAyah : 1,
-          endAyah: custom ? custom.endAyah : (sObj ? sObj.totalVerses : 286)
-        };
-      });
-      autoCalculatedClasses = partitionSurahsAcrossClasses(surahInputs, totalLessonsInPlan);
-    } else {
-      autoCalculatedClasses = partitionJuzAcrossClasses(targetSurahs, totalLessonsInPlan);
-    }
-
-    const generatedLessons: Lesson[] = [];
-    let generatedCount = 0;
-    let checkDate = new Date();
-    checkDate.setDate(checkDate.getDate() + 1);
-    let dayOffset = 0;
-
-    while (generatedCount < totalLessonsInPlan && dayOffset < 120) {
-      const classDate = new Date(checkDate.getTime() + dayOffset * 24 * 60 * 60 * 1000);
-      const dayOfWeek = classDate.getDay();
-
-      const matchedDayName = Object.keys(daysWeekMap).find(key => daysWeekMap[key] === dayOfWeek);
-      if (matchedDayName && selectedDays.includes(matchedDayName)) {
-        const dateStr = classDate.toISOString().split('T')[0];
-        const exactDayTime = dayTimeSlots[matchedDayName] || '12:00';
-        const classTarget = autoCalculatedClasses[generatedCount] || autoCalculatedClasses[0];
-
-        generatedLessons.push({
-          id: `les-sub-${studentProf.id}-${generatedCount + 1}-${Date.now()}`,
-          studentId: studentProf.id,
-          teacherId: teacher.id,
-          teacherNameAr: teacher.nameAr,
-          teacherNameEn: teacher.nameEn,
-          studentNameAr: studentProf.nameAr,
-          studentNameEn: studentProf.nameEn,
-          date: dateStr,
-          time: exactDayTime,
-          durationMinutes: 30,
-          status: 'SCHEDULED',
-          googleMeetUrl: '',
-          surahTargetAr: classTarget ? `مقرر ${classTarget.summaryAr} • ${classTarget.pageRangeText}` : 'مقرر مخصص ضمن الخطة',
-          notes: `حصة مدارسة (${matchedDayName} الساعة ${exactDayTime})`
-        });
-        generatedCount++;
-      }
-      dayOffset++;
-    }
-
-    return generatedLessons;
+    await saveStudentProfileToDatabase(updated);
+    setStudent(updated);
   };
 
-  const approveStudentPayment = (studentId: string) => {
-    let approvedProfile: StudentProfile | null = null;
-
-    // 1. Update user accounts and persist to localStorage
-    setUserAccounts(prev => {
-      const updated = prev.map(acc => {
-        if (acc.id === studentId || acc.studentProfile?.id === studentId) {
-          const prof = acc.studentProfile || student;
-          const changeType = prof.subscriptionChangeType || 'NEW';
-
-          let updatedProf: StudentProfile;
-
-          if (changeType === 'EXTRA_CLASS') {
-            updatedProf = {
-              ...prof,
-              verificationStatus: 'VERIFIED',
-              remainingLessons: (prof.remainingLessons || 0) + 1,
-              extraClassCredits: (prof.extraClassCredits || 0) + 1,
-              extraPurchasedClassesCount: (prof.extraPurchasedClassesCount || 0) + 1,
-              subscriptionChangeType: undefined
-            };
-          } else if (changeType === 'UPGRADE_NEXT_MONTH' || changeType === 'DOWNGRADE_NEXT_MONTH') {
-            updatedProf = {
-              ...prof,
-              verificationStatus: 'VERIFIED',
-              nextCyclePlanId: prof.pendingPlanId || prof.nextCyclePlanId,
-              pendingPlanId: undefined,
-              subscriptionChangeType: undefined
-            };
-          } else {
-            const targetPlanId = prof.pendingPlanId || prof.activePlanId || 'plan-standard';
-            const targetPlan = plans.find(p => p.id === targetPlanId) || plans[1];
-            updatedProf = {
-              ...prof,
-              verificationStatus: 'VERIFIED',
-              activePlanId: targetPlanId,
-              pendingPlanId: undefined,
-              subscriptionChangeType: undefined,
-              remainingLessons: targetPlan.lessonsPerMonth,
-              subscriptionStartDate: new Date().toISOString().split('T')[0],
-              subscriptionRenewalDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
-            };
-          }
-
-          approvedProfile = updatedProf;
-          return { ...acc, studentProfile: updatedProf };
-        }
-        return acc;
-      });
-
-      try {
-        localStorage.setItem('ratel_user_accounts', JSON.stringify(updated));
-      } catch (e) {}
-      return updated;
-    });
-
-    // 2. Update active student state if it matches the target student
-    setStudent(prev => {
-      const profToApply = approvedProfile || prev;
-      if (prev.id === studentId || !prev.id || prev.id === 'std-101' || approvedProfile) {
-        try {
-          localStorage.setItem('ratel_student', JSON.stringify(profToApply));
-        } catch (e) {}
-        return profToApply;
-      }
-      return prev;
-    });
-
-    // 3. Generate & activate subscription lessons upon admin approval
-    setLessons(prev => {
-      const targetProf = approvedProfile || student;
-      const otherLessons = prev.filter(l => l.studentId !== targetProf.id && l.studentId !== targetProf.email);
-      const existingStudentLessons = prev.filter(l => l.studentId === targetProf.id || l.studentId === targetProf.email);
-      
-      const completedOrOrient = existingStudentLessons.filter(l => l.status === 'COMPLETED' || l.isOrientationSession);
-
-      // Generate the new approved subscription lessons for this student profile
-      const newSubLessons = generateSubscriptionLessonsForStudentProfile(targetProf, plans, teachers);
-
-      const updated = [...completedOrOrient, ...newSubLessons, ...otherLessons];
-
-      try {
-        localStorage.setItem('ratel_lessons', JSON.stringify(updated));
-      } catch (e) {}
-      saveLessonsToDatabase(updated, targetProf.id);
-      return updated;
-    });
-
-    // 4. Add system notification
-    setNotifications(prev => [
-      {
-        id: 'notif-' + Date.now(),
-        titleAr: 'تم تفعيل الحساب واعتماد العملية',
-        titleEn: 'Operation Verified & Active',
-        messageAr: 'تم التحقق من العملية وتحديث جدول وخطة الحصص بنجاح.',
-        messageEn: 'Your operation was verified and your classes schedule was updated.',
-        time: 'الآن',
-        read: false,
-        type: 'PLAN_SUBSCRIPTION' as const
-      },
-      ...prev
-    ]);
+  const setGeneratedPlanLessons = async (newLessons: Lesson[], studentIdOverride?: string): Promise<boolean> => {
+    const activeStudentId = studentIdOverride || currentUser?.id || student.id;
+    const formattedNewLessons = newLessons.map(l => ({ ...l, studentId: activeStudentId }));
+    const currentLessons = lessons;
+    const otherStudentsLessons = currentLessons.filter(l => l.studentId !== activeStudentId);
+    const currentStudentCompletedLessons = currentLessons.filter(l => l.studentId === activeStudentId && (l.status === 'COMPLETED' || l.isOrientationSession));
+    const nextIds = new Set(formattedNewLessons.map(lesson => lesson.id));
+    const cancelled = currentLessons.filter(lesson => lesson.studentId === activeStudentId && lesson.status === 'SCHEDULED' && !lesson.isOrientationSession && !nextIds.has(lesson.id)).map(lesson => ({ ...lesson, status: 'CANCELLED' as const }));
+    const updatedList = [...currentStudentCompletedLessons, ...cancelled, ...formattedNewLessons, ...otherStudentsLessons];
+    if (!await saveLessonsToDatabase(updatedList, activeStudentId)) return false;
+    setLessons(savedSchedule.current);
+    return true;
   };
 
-  const pauseSubscription = (reason?: string) => {
-    setStudent(prev => ({
-      ...prev,
-      verificationStatus: 'PAUSED',
-      pauseReason: reason || 'طلب تجميد مؤقت من الطالب'
-    }));
+  const updateUpcomingPlanLessons = async (newUpcomingLessons: Lesson[], studentIdOverride?: string, goal?: StudentQuranGoal): Promise<boolean> => {
+    const activeStudentId = studentIdOverride || currentUser?.id || student.id;
+    const formattedNewUpcoming = newUpcomingLessons.map(l => ({ ...l, studentId: activeStudentId }));
+    const otherStudentsLessons = lessons.filter(l => l.studentId !== activeStudentId);
+    const currentStudentCompleted = lessons.filter(l => l.studentId === activeStudentId && (l.status === 'COMPLETED' || l.isOrientationSession));
+    const nextIds = new Set(formattedNewUpcoming.map(lesson => lesson.id));
+    const cancelled = lessons.filter(lesson => lesson.studentId === activeStudentId && lesson.status === 'SCHEDULED' && !lesson.isOrientationSession && !nextIds.has(lesson.id)).map(lesson => ({ ...lesson, status: 'CANCELLED' as const }));
+    const updatedList = [...currentStudentCompleted, ...cancelled, ...formattedNewUpcoming, ...otherStudentsLessons];
+    if (!await saveLessonsToDatabase(updatedList, activeStudentId, goal)) return false;
+    setLessons(savedSchedule.current);
+    if (goal && activeStudentId === currentUser?.id) setStudent(prev => ({ ...prev, quranGoal: goal }));
+    setStudent(prev => ({ ...prev, extraClassCredits: 0, extraPurchasedClassesCount: 0 }));
+    return true;
   };
 
-  const resumeSubscription = () => {
-    setStudent(prev => ({
-      ...prev,
-      verificationStatus: 'VERIFIED',
-      pauseReason: undefined
-    }));
+  const rescheduleLessons = async (updates: { lessonId: string; date: string; time: string }[]): Promise<boolean> => {
+    if (!updates.length) return false;
+    const updateMap = new Map(updates.map(update => [update.lessonId, update]));
+    const targetLessons = lessons.filter(lesson => updateMap.has(lesson.id) && lesson.status !== 'COMPLETED');
+    if (targetLessons.length !== updateMap.size) return false;
+    const updatedList = lessons.map(lesson => {
+      const update = updateMap.get(lesson.id);
+      return update ? { ...lesson, date: update.date, time: update.time, status: 'SCHEDULED' as const, needsRescheduling: false } : lesson;
+    });
+    if (!await saveLessonsToDatabase(updatedList, targetLessons[0].studentId)) return false;
+    setLessons(savedSchedule.current);
+    setStudent(prev => ({ ...prev, extraClassCredits: Math.max(0, (prev.extraClassCredits || 0) - targetLessons.length) }));
+    return true;
   };
 
-  const cancelSubscription = () => {
-    const activeStudentId = currentUser?.id || student.id;
-    setStudent(prev => ({
-      ...prev,
-      verificationStatus: 'CANCELLED'
-    }));
+  const rescheduleLesson = async (lessonId: string, newDate: string, newTimeStr: string): Promise<boolean> =>
+    rescheduleLessons([{ lessonId, date: newDate, time: newTimeStr }]);
 
-    // Cancel upcoming scheduled lessons while preserving completed lessons
-    setLessons(prev => {
-      const studentCompleted = prev.filter(l => l.studentId === activeStudentId && l.status === 'COMPLETED');
-      const otherLessons = prev.filter(l => l.studentId !== activeStudentId);
-      const studentCancelledScheduled = prev
-        .filter(l => l.studentId === activeStudentId && l.status === 'SCHEDULED')
-        .map(l => ({ ...l, status: 'CANCELLED' as const }));
-
-      const updated = [...studentCompleted, ...studentCancelledScheduled, ...otherLessons];
-      saveLessonsToDatabase(updated);
-      return updated;
-    });
+  const subscriptionAction = async (action: string, payload: Record<string, unknown> = {}) => {
+    const response = await fetch('/api/subscriptions', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action, ...payload }) });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(result.error || 'Unable to update subscription.');
+    const refresh = await fetch('/api/lessons', { cache: 'no-store' });
+    if (refresh.ok) { scheduleVersion.current = refresh.headers.get('X-Schedule-Version'); savedSchedule.current = await refresh.json(); }
+    else scheduleVersion.current = null;
+    const profile = result.profile as StudentProfile;
+    if (profile.id === currentUser?.id) setStudent(profile);
+    setUserAccounts(prev => prev.map(account => account.id === profile.id ? { ...account, studentProfile: profile } : account));
+    if (refresh.ok) setLessons(savedSchedule.current);
+    else setLessons(prev => [...prev.filter(lesson => lesson.studentId !== profile.id), ...result.lessons]);
   };
+  const approveStudentPayment = (studentId: string) => subscriptionAction('APPROVE', { studentId });
+  const rejectStudentPayment = (studentId: string, reason?: string) => subscriptionAction('REJECT', { studentId, reason });
+  const pauseSubscription = (reason?: string) => subscriptionAction('PAUSE', { reason });
+  const resumeSubscription = () => subscriptionAction('RESUME');
+  const cancelSubscription = () => subscriptionAction('CANCEL');
 
-  const rejectStudentPayment = (studentId: string, reason?: string) => {
-    const rejectionMsg = reason || 'تم رفض إيصال التحويل المصرفي من قبل إدارة المنصة. يرجى التأكد من صحة التحويل وإعادة الرفع.';
-
-    // 1. Update user accounts: set UNVERIFIED, set rejectionReason, clear pending plan and reserved slots
-    setUserAccounts(prev => {
-      const updated = prev.map(acc => {
-        if (acc.id === studentId || acc.studentProfile?.id === studentId) {
-          const prof = acc.studentProfile || student;
-          const updatedGoal = prof.quranGoal ? {
-            ...prof.quranGoal,
-            dayTimeSlots: {} // Clear reserved time slots to free them up for other students
-          } : undefined;
-
-          return {
-            ...acc,
-            studentProfile: {
-              ...prof,
-              verificationStatus: 'UNVERIFIED' as const,
-              rejectionReason: rejectionMsg,
-              pendingPlanId: undefined,
-              subscriptionChangeType: undefined,
-              quranGoal: updatedGoal
-            }
-          };
-        }
-        return acc;
-      });
-
-      try {
-        localStorage.setItem('ratel_user_accounts', JSON.stringify(updated));
-      } catch (e) {}
-      return updated;
-    });
-
-    // 2. Update active student state if matching target student
-    setStudent(prev => {
-      if (prev.id === studentId || !prev.id || prev.id === 'std-101') {
-        const updatedGoal = prev.quranGoal ? { ...prev.quranGoal, dayTimeSlots: {} } : undefined;
-        const updatedProf: StudentProfile = {
-          ...prev,
-          verificationStatus: 'UNVERIFIED',
-          rejectionReason: rejectionMsg,
-          pendingPlanId: undefined,
-          subscriptionChangeType: undefined,
-          quranGoal: updatedGoal
-        };
-        try {
-          localStorage.setItem('ratel_student', JSON.stringify(updatedProf));
-        } catch (e) {}
-        return updatedProf;
-      }
-      return prev;
-    });
-
-    // 3. REMOVE ALL LESSONS FOR THIS STUDENT FROM SYSTEM & DB
-    setLessons(prev => {
-      const updated = prev.filter(l => l.studentId !== studentId && l.studentId !== student.email);
-      try {
-        localStorage.setItem('ratel_lessons', JSON.stringify(updated));
-      } catch (e) {}
-      saveLessonsToDatabase(updated, studentId);
-      return updated;
-    });
-
-    // 4. ADD SYSTEM NOTIFICATION FOR THE STUDENT WITH REJECTION REASON
-    setNotifications(prev => [
-      {
-        id: 'notif-' + Date.now(),
-        titleAr: 'تم رفض طلب التفعيل وإيصال التحويل',
-        titleEn: 'Application & Payment Receipt Rejected',
-        messageAr: rejectionMsg,
-        messageEn: 'Your payment receipt was rejected by admin: ' + rejectionMsg,
-        time: 'الآن',
-        read: false,
-        type: 'PLAN_SUBSCRIPTION' as const
-      },
-      ...prev
-    ]);
-  };
-
-  const bookLesson = (teacherId: string, date: string, time: string) => {
+  const bookLesson = async (teacherId: string, date: string, time: string): Promise<boolean> => {
     const selectedTeacher = teachers.find(t => t.id === teacherId);
-    if (!selectedTeacher) return;
+    if (!selectedTeacher) return false;
 
     const activeStudentId = currentUser?.id || student.id;
 
@@ -1505,207 +883,116 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       studentNameEn: student.nameEn,
       date,
       time,
-      durationMinutes: 30,
+      durationMinutes: plans.find(plan => plan.id === student.activePlanId)?.lessonDurationMinutes || plans[0].lessonDurationMinutes,
       status: 'SCHEDULED',
       googleMeetUrl: '',
       surahTargetAr: 'الحفظ: سورة جديدة متفق عليها | التلاوة: الحزب المعتمد'
     };
 
-    setLessons(prev => {
-      const updated = [newLesson, ...prev];
-      saveLessonsToDatabase(updated);
-      return updated;
-    });
+    const updatedLessons = [newLesson, ...lessons];
+    if (!await saveLessonsToDatabase(updatedLessons)) return false;
+    setLessons(savedSchedule.current);
 
-    setStudent(prev => ({
-      ...prev,
-      remainingLessons: Math.max(0, prev.remainingLessons - 1)
-    }));
+
+    return true;
   };
 
-  const updateMeetUrl = (lessonId: string, newUrl: string) => {
-    setLessons(prev => {
-      const updated = prev.map(l => l.id === lessonId ? { ...l, googleMeetUrl: newUrl } : l);
-      saveLessonsToDatabase(updated);
-      return updated;
-    });
+  const updateMeetUrl = async (lessonId: string, newUrl: string) => {
+    const updated = lessons.map(lesson => lesson.id === lessonId ? { ...lesson, googleMeetUrl: newUrl } : lesson);
+    if (!await saveLessonsToDatabase(updated)) throw new Error('Unable to save the meeting link.');
+    setLessons(savedSchedule.current);
   };
 
-  const completeLesson = (lessonId: string, notes?: string) => {
-    setLessons(prev => {
-      const updated = prev.map(l => l.id === lessonId ? { ...l, status: 'COMPLETED' as const, notes } : l);
-      saveLessonsToDatabase(updated);
-      return updated;
-    });
+  const completeLesson = async (lessonId: string, notes?: string, scope?: string) => {
+    const targetLesson = lessons.find(lesson => lesson.id === lessonId);
+    if (!targetLesson) throw new Error('Class not found. Refresh and try again.');
+    const updated = lessons.map(lesson => lesson.id === lessonId ? {
+      ...lesson,
+      status: 'COMPLETED' as const,
+      notes,
+      ...(scope?.trim() ? { surahTargetAr: scope.trim(), surahTargetEn: scope.trim() } : {}),
+    } : lesson);
+    if (!await saveLessonsToDatabase(updated)) throw new Error('Unable to save class completion. Please try again.');
+    setLessons(savedSchedule.current);
 
-    setStudent(prev => ({
-      ...prev,
-      totalLessonsCompleted: prev.totalLessonsCompleted + 1,
-      totalHoursLearned: prev.totalHoursLearned + 0.5
-    }));
+    await refreshData();
   };
 
-  const cancelLesson = (lessonId: string) => {
-    setLessons(prev => {
-      const updated = prev.map(l => l.id === lessonId ? { ...l, status: 'CANCELLED' as const } : l);
-      saveLessonsToDatabase(updated);
-      return updated;
-    });
+  const cancelLesson = async (lessonId: string) => {
+    const updated = lessons.map(lesson => lesson.id === lessonId ? { ...lesson, status: 'CANCELLED' as const } : lesson);
+    if (!await saveLessonsToDatabase(updated)) throw new Error('Unable to cancel class.');
+    setLessons(savedSchedule.current);
   };
-
-  const clearAllClassData = () => {
+  const clearAllClassData = async () => {
+    const response = await fetch('/api/lessons', { method: 'DELETE' });
+    if (!response.ok) throw new Error('Unable to clear class data.');
     setLessons([]);
-    try {
-      localStorage.setItem('ratel_lessons', JSON.stringify([]));
-    } catch (e) {}
-    fetch('/api/lessons', { method: 'DELETE' }).catch(err => console.error(err));
   };
 
-  const toggleBlockAccount = (userId: string) => {
-    setUserAccounts(prev => {
-      const updated = prev.map(a => {
-        if (a.id === userId) {
-          const newBlocked = !a.isBlocked;
-          const updatedProf = a.studentProfile ? {
-            ...a.studentProfile,
-            verificationStatus: (newBlocked ? 'PAUSED' : 'VERIFIED') as VerificationStatus
-          } : undefined;
-          return { ...a, isBlocked: newBlocked, studentProfile: updatedProf };
-        }
-        return a;
-      });
-      return updated;
-    });
-  };
+  const toggleBlockAccount = (userId: string) => updateAdminAccount(userId, { isBlocked: !userAccounts.find(account => account.id === userId)?.isBlocked });
 
-  const updateTeacherAvailability = (
+  const updateTeacherAvailability = async (
     teacherId: string,
-    newStart: string,
-    newEnd: string,
-    newDays: string[],
-    newSlots: string[],
+    availabilityByDay: Record<string, { start: string; end: string }[]>,
     conflictResolutionOption: 'KEEP_EXISTING' | 'CANCEL_AND_REFUND_CREDIT' | 'NOTIFY_STUDENTS'
-  ) => {
-    setTeachers(prev => {
-      const updated = prev.map(t => {
-        if (t.id === teacherId) {
-          return {
-            ...t,
-            workingHoursStart: newStart,
-            workingHoursEnd: newEnd,
-            workingDaysAr: newDays,
-            availableSlots: newSlots
-          };
-        }
-        return t;
+  ): Promise<{ success: boolean; error?: string; conflictCount?: number }> => {
+    try {
+      const response = await fetch('/api/teacher/availability', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ teacherId, availabilityByDay, resolution: conflictResolutionOption }),
       });
-      try {
-        localStorage.setItem('ratel_teachers', JSON.stringify(updated));
-      } catch (e) {}
-      return updated;
-    });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) return { success: false, error: result.error || 'Could not save availability.' };
 
-    if (conflictResolutionOption === 'CANCEL_AND_REFUND_CREDIT') {
-      let cancelledCount = 0;
-      setLessons(prev => {
-        const updated = prev.map(l => {
-          if (l.teacherId === teacherId && l.status === 'SCHEDULED') {
-            const timeClean = l.time.split(' ')[0];
-            const parts = l.date.split('-');
-            let dayName = '';
-            if (parts.length === 3) {
-              const dt = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
-              const daysAr = ['الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
-              dayName = daysAr[dt.getDay()];
-            }
-            const isTimeConflict = !newSlots.includes(timeClean);
-            const isDayConflict = Boolean(dayName && !newDays.includes(dayName));
-
-            if (isTimeConflict || isDayConflict) {
-              cancelledCount++;
-              return { 
-                ...l, 
-                status: 'CANCELLED' as const,
-                needsRescheduling: false 
-              };
-            }
-          }
-          return l;
-        });
-        saveLessonsToDatabase(updated);
+      const updatedTeacher = result.teacher as Teacher;
+      const conflictIds = new Set<string>(result.conflictLessonIds || []);
+      const refunds = (result.refundedCreditsByStudent || {}) as Record<string, number>;
+      setTeachers(prev => {
+        const updated = prev.map(t => t.id === teacherId ? { ...t, ...updatedTeacher } : t);
         return updated;
       });
-
-      const refundCount = cancelledCount > 0 ? cancelledCount : 1;
-      setStudent(prev => ({
-        ...prev,
-        extraClassCredits: (prev.extraClassCredits || 0) + refundCount
+      setLessons(prev => prev.map(lesson => {
+        if (!conflictIds.has(lesson.id)) return lesson;
+        return conflictResolutionOption === 'CANCEL_AND_REFUND_CREDIT'
+          ? { ...lesson, status: 'CANCELLED', needsRescheduling: false }
+          : { ...lesson, needsRescheduling: true };
       }));
-    } else if (conflictResolutionOption === 'NOTIFY_STUDENTS') {
-      setLessons(prev => {
-        const updated = prev.map(l => {
-          if (l.teacherId === teacherId && l.status === 'SCHEDULED') {
-            const timeClean = l.time.split(' ')[0];
-            const parts = l.date.split('-');
-            let dayName = '';
-            if (parts.length === 3) {
-              const dt = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
-              const daysAr = ['الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
-              dayName = daysAr[dt.getDay()];
-            }
-            const isTimeConflict = !newSlots.includes(timeClean);
-            const isDayConflict = Boolean(dayName && !newDays.includes(dayName));
-
-            if (isTimeConflict || isDayConflict) {
-              return { ...l, needsRescheduling: true };
-            }
-          }
-          return l;
-        });
-        saveLessonsToDatabase(updated);
-        return updated;
-      });
-    } else {
-      setLessons(prev => {
-        const updated = prev.map(l => {
-          if (l.teacherId === teacherId && l.status === 'SCHEDULED') {
-            return { ...l, needsRescheduling: false };
-          }
-          return l;
-        });
-        saveLessonsToDatabase(updated);
-        return updated;
-      });
-    }
-
-    if (conflictResolutionOption === 'CANCEL_AND_REFUND_CREDIT' || conflictResolutionOption === 'NOTIFY_STUDENTS') {
-      const newNotif: NotificationItem = {
-        id: `notif-${Date.now()}`,
-        titleAr: conflictResolutionOption === 'CANCEL_AND_REFUND_CREDIT' ? 'إلغاء حصة وإضافة رصيد تعويضي' : 'تنبيه: تغيير في مواعيد المعلم',
-        titleEn: conflictResolutionOption === 'CANCEL_AND_REFUND_CREDIT' ? 'Class Cancelled & Credit Added' : 'Notice: Teacher Schedule Updated',
-        messageAr: conflictResolutionOption === 'CANCEL_AND_REFUND_CREDIT' 
-          ? 'تم إلغاء حصتك المجدولة بسبب تعديل المعلم لساعات عمله، وتم إضافة حصة تعويضية مجانية لرصيدك لحجز موعد مناسب جديد.'
-          : 'قام المعلم بتحديث أيام وساعات العمل. يرجى الاطلاع على جدول حصصك وااختيار موعد جديد لحصتك القادمة.',
-        messageEn: conflictResolutionOption === 'CANCEL_AND_REFUND_CREDIT'
-          ? 'Your scheduled class was cancelled due to teacher schedule update. A free replacement credit has been added to your balance.'
-          : 'Your teacher updated working schedule. Please review your class and select a new time slot.',
-        time: 'الآن',
-        read: false,
-        type: 'SYSTEM'
-      };
-      setNotifications(prev => [newNotif, ...prev]);
+      if (Object.keys(refunds).length) {
+        setUserAccounts(prev => prev.map(account => {
+          const count = refunds[account.id] || refunds[account.studentProfile?.id || ''] || 0;
+          if (!count || !account.studentProfile) return account;
+          const profile = { ...account.studentProfile, extraClassCredits: (account.studentProfile.extraClassCredits || 0) + count };
+          if (student.id === account.id || student.id === profile.id) setStudent(profile);
+          return { ...account, studentProfile: profile };
+        }));
+      }
+      await refreshData();
+      return { success: true, conflictCount: result.conflictCount || 0 };
+    } catch (error) {
+      console.error('Teacher availability sync failed:', error);
+      return { success: false, error: 'Unable to save availability. Check your connection and try again.' };
     }
   };
 
-  const createAccountByAdmin = (newAccount: UserAccount) => {
-    setUserAccounts(prev => [newAccount, ...prev]);
-    if (newAccount.role === 'TEACHER' && newAccount.teacherProfile) {
-      setTeachers(prev => [newAccount.teacherProfile!, ...prev]);
+  const createAccountByAdmin = async (newAccount: UserAccount, password: string) => {
+    const response = await fetch('/api/admin/accounts', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ account: newAccount, password }),
+    });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || 'Unable to create account.');
+    const savedAccount = mapAccount(result.user);
+    setUserAccounts(prev => [savedAccount, ...prev.filter(account => account.id !== savedAccount.id)]);
+    if (savedAccount.role === 'TEACHER' && savedAccount.teacherProfile) {
+      setTeachers(prev => [savedAccount.teacherProfile!, ...prev.filter(teacher => teacher.id !== savedAccount.teacherProfile!.id)]);
     }
   };
 
   const markNotificationRead = (id: string) => {
-    setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n));
+    const updated = notifications.map(n => n.id === id ? { ...n, read: true } : n);
+    void fetch('/api/notifications', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ notifications: updated }) }).then(response => { if (response.ok) setNotifications(updated); });
   };
 
   return (
@@ -1745,12 +1032,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setGeneratedPlanLessons,
       updateUpcomingPlanLessons,
       rescheduleLesson,
+      rescheduleLessons,
       pauseSubscription,
       resumeSubscription,
       cancelSubscription,
       approveStudentPayment,
       rejectStudentPayment,
       toggleBlockAccount,
+      refreshData,
       createAccountByAdmin,
       updateTeacherAvailability,
       bookLesson,

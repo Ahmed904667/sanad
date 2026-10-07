@@ -1,8 +1,10 @@
 'use client';
 
-import React, { useState } from 'react';
-import { Star, X, MessageSquare, ThumbsUp, CheckCircle2, User } from 'lucide-react';
-import { Teacher, Review } from '../types';
+import { AccessibleModal } from './AccessibleModal';
+
+import React from 'react';
+import { Star, X, MessageSquare, User } from 'lucide-react';
+import { Teacher } from '../types';
 import { useApp } from '../context/AppContext';
 
 interface TeacherReviewsModalProps {
@@ -12,43 +14,22 @@ interface TeacherReviewsModalProps {
 }
 
 export const TeacherReviewsModal: React.FC<TeacherReviewsModalProps> = ({ teacher, isOpen, onClose }) => {
-  const { language, reviews, currentUser, addReview } = useApp();
+  const { language, reviews } = useApp();
   const isAr = language === 'ar';
 
   const teacherReviews = reviews.filter((r) => r.teacherId === teacher.id);
-  const currentStudentId = currentUser?.id;
-  const existingUserReview = teacherReviews.find(
-    (r) => r.studentId === currentStudentId || (currentUser?.nameAr && r.studentNameAr === currentUser.nameAr)
-  );
-
-  const [ratingInput, setRatingInput] = useState<number>(existingUserReview?.rating || 5);
-  const [commentInput, setCommentInput] = useState<string>(existingUserReview?.commentAr || '');
-  const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
-  const [successMsg, setSuccessMsg] = useState<boolean>(false);
-
   if (!isOpen) return null;
-
-  const handleSaveReview = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!ratingInput) return;
-
-    setIsSubmitting(true);
-    addReview(teacher.id, ratingInput, commentInput);
-    setIsSubmitting(false);
-    setSuccessMsg(true);
-    setTimeout(() => setSuccessMsg(false), 3000);
-  };
 
   // Calculate rating stats
   const totalRevs = teacherReviews.length;
   const avgRating = totalRevs > 0
     ? (teacherReviews.reduce((sum, r) => sum + r.rating, 0) / totalRevs).toFixed(1)
-    : teacher.rating.toFixed(1);
+    : (isAr ? 'لا توجد تقييمات بعد' : 'No reviews yet');
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-emerald-950/60 backdrop-blur-xs animate-fade-in">
+    <AccessibleModal onClose={onClose} aria-label={isAr ? "آراء الطلاب" : "Student reviews"} className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-emerald-950/60 backdrop-blur-xs animate-fade-in">
       <div className="bg-white rounded-3xl max-w-2xl w-full max-h-[90vh] flex flex-col shadow-2xl border border-slate-100 overflow-hidden">
-        
+
         {/* Header */}
         <div className="p-5 border-b border-slate-100 flex items-center justify-between bg-emerald-900 text-white">
           <div className="flex items-center gap-3">
@@ -74,7 +55,7 @@ export const TeacherReviewsModal: React.FC<TeacherReviewsModalProps> = ({ teache
 
         {/* Content Body */}
         <div className="p-5 overflow-y-auto space-y-6 flex-1 text-xs">
-          
+
           {/* Overall Rating Summary */}
           <div className="bg-emerald-50/80 border border-emerald-200/80 rounded-2xl p-4 flex flex-col sm:flex-row items-center justify-between gap-4">
             <div className="text-center sm:text-right space-y-1">
@@ -98,71 +79,6 @@ export const TeacherReviewsModal: React.FC<TeacherReviewsModalProps> = ({ teache
               <span>{isAr ? 'تقييمات موثقة 100% من طلاب منصة سنَد' : '100% Verified Student Reviews'}</span>
             </div>
           </div>
-
-          {/* Student Add / Edit Rating Form */}
-          {currentUser?.role === 'STUDENT' && (
-            <form onSubmit={handleSaveReview} className="bg-amber-50/70 border border-amber-200 rounded-2xl p-4 space-y-3">
-              <div className="flex items-center justify-between">
-                <h3 className="font-black text-emerald-950 flex items-center gap-1.5 text-xs">
-                  <Star className="w-4 h-4 text-amber-500 fill-amber-400" />
-                  <span>{existingUserReview ? (isAr ? 'تحديث تقييمك للمعلم:' : 'Update Your Rating:') : (isAr ? 'تقييم المعلم (مرة واحدة لكل طالب):' : 'Rate Scholar (Once per student):')}</span>
-                </h3>
-                {existingUserReview && (
-                  <span className="text-[10px] font-bold text-amber-900 bg-amber-200/80 px-2 py-0.5 rounded-md">
-                    {isAr ? 'قمت بتقييمه سابقاً' : 'Previously Rated'}
-                  </span>
-                )}
-              </div>
-
-              {/* Interactive Star Picker */}
-              <div className="flex items-center gap-2 pt-1">
-                <span className="text-slate-700 font-bold text-xs">{isAr ? 'درجة التقييم:' : 'Your Rating:'}</span>
-                <div className="flex items-center gap-1">
-                  {[1, 2, 3, 4, 5].map((s) => (
-                    <button
-                      key={s}
-                      type="button"
-                      onClick={() => setRatingInput(s)}
-                      className="p-1 cursor-pointer transition-transform hover:scale-110"
-                    >
-                      <Star
-                        className={`w-6 h-6 ${s <= ratingInput ? 'text-amber-400 fill-amber-400' : 'text-slate-300 hover:text-amber-300'}`}
-                      />
-                    </button>
-                  ))}
-                </div>
-                <span className="font-extrabold text-emerald-950 text-xs mr-2">
-                  {ratingInput} / 5
-                </span>
-              </div>
-
-              {/* Comment Input */}
-              <textarea
-                value={commentInput}
-                onChange={(e) => setCommentInput(e.target.value)}
-                placeholder={isAr ? 'اكتب رأيك وتجربتك مع المعلم (اختياري)...' : 'Write your experience with this scholar (optional)...'}
-                rows={2}
-                className="w-full p-2.5 rounded-xl border border-amber-300/80 bg-white text-xs font-bold text-slate-900 focus:outline-emerald-800"
-              />
-
-              <div className="flex items-center justify-between pt-1">
-                <button
-                  type="submit"
-                  disabled={isSubmitting}
-                  className="px-5 py-2 rounded-xl gold-gradient-bg text-emerald-950 font-black text-xs shadow-xs hover:brightness-105 cursor-pointer"
-                >
-                  {existingUserReview ? (isAr ? 'تحديث التقييم' : 'Update Review') : (isAr ? 'حفظ التقييم' : 'Submit Review')}
-                </button>
-
-                {successMsg && (
-                  <span className="text-emerald-800 font-extrabold flex items-center gap-1 text-xs">
-                    <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                    <span>{isAr ? 'تم حفظ التقييم بنجاح!' : 'Rating saved successfully!'}</span>
-                  </span>
-                )}
-              </div>
-            </form>
-          )}
 
           {/* List of All Student Reviews */}
           <div className="space-y-3">
@@ -223,6 +139,6 @@ export const TeacherReviewsModal: React.FC<TeacherReviewsModalProps> = ({ teache
           </button>
         </div>
       </div>
-    </div>
+    </AccessibleModal>
   );
 };

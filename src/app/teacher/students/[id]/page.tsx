@@ -1,54 +1,74 @@
  'use client';
 
-import React, { useState } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import React, { useEffect, useState } from 'react';
+import { useParams } from 'next/navigation';
 import Link from 'next/link';
+import { localizeQuranScope } from '@/utils/localization';
 import { useApp } from '@/context/AppContext';
+import type { StudentProfile, UserAccount } from '@/types';
 import { AvatarBadge } from '@/components/AvatarBadge';
 import { AuthGuard } from '@/components/AuthGuard';
 import { getQuranTrackTitle } from '@/data/mockData';
-import { 
-  Users, 
-  Calendar, 
-  Clock, 
-  BookOpen, 
-  CheckCircle2, 
-  Hourglass, 
-  Award, 
-  Target, 
-  Edit3,
+import {
+  Users,
+  Calendar,
+  BookOpen,
   Video,
   ExternalLink,
   ArrowRight,
-  ShieldCheck,
   Mail,
   Phone,
-  Sparkles,
   CreditCard,
-  Grid,
-  Filter,
   Check,
-  Copy,
-  UserCheck
+  Copy
 } from 'lucide-react';
 
 function DedicatedStudentDetailsContent() {
   const params = useParams();
-  const router = useRouter();
   const studentId = params.id as string;
 
-  const { language, currentUser, student, plans, userAccounts, lessons, updateMeetUrl } = useApp();
+  const { language, plans, lessons, role, updateMeetUrl } = useApp();
   const isAr = language === 'ar';
+  const [teacherStudents, setTeacherStudents] = useState<UserAccount[]>([]);
+  const [rosterLoading, setRosterLoading] = useState(true);
+  const [rosterError, setRosterError] = useState('');
 
   const [activeTab, setActiveTab] = useState<'CLASSES' | 'GOAL' | 'BILLING'>('CLASSES');
   const [classFilter, setClassFilter] = useState<'ALL' | 'UPCOMING' | 'COMPLETED'>('ALL');
   const [editingMeetUrlId, setEditingMeetUrlId] = useState<string | null>(null);
   const [tempMeetUrl, setTempMeetUrl] = useState<string>('');
+  const [meetSaving, setMeetSaving] = useState(false);
+  const [meetError, setMeetError] = useState('');
+  const handleSaveMeetUrl = async (lessonId: string) => {
+    if (meetSaving) return;
+    setMeetSaving(true); setMeetError('');
+    try { await updateMeetUrl(lessonId, tempMeetUrl); setEditingMeetUrlId(null); }
+    catch(error) { setMeetError(error instanceof Error ? error.message : 'Unable to save meeting link.'); }
+    finally { setMeetSaving(false); }
+  };
+
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
-  // Find target student account
-  const studentAccount = userAccounts.find(a => a.id === studentId || a.studentProfile?.id === studentId);
-  const studentProfile = studentAccount?.studentProfile || (student.id === studentId ? student : null);
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/teacher/students', { cache: 'no-store' })
+      .then(async response => {
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error || 'Unable to load student profile.');
+        if (!cancelled) setTeacherStudents(Array.isArray(result.students) ? result.students as UserAccount[] : []);
+      })
+      .catch(error => { if (!cancelled) setRosterError(error instanceof Error ? error.message : 'Unable to load student profile.'); })
+      .finally(() => { if (!cancelled) setRosterLoading(false); });
+    return () => { cancelled = true; };
+  }, []);
+
+  // Only use student records returned by the teacher-scoped endpoint.
+  const studentAccount = teacherStudents.find(account => account.id === studentId);
+  const studentProfile = studentAccount?.studentProfile || null;
+
+  if (rosterLoading) {
+    return <div role="status" className="min-h-screen bg-slate-50 px-4 py-24 text-center font-semibold text-slate-500">{isAr ? 'جاري تحميل ملف الطالب...' : 'Loading student profile…'}</div>;
+  }
 
   if (!studentAccount && !studentProfile) {
     return (
@@ -56,14 +76,14 @@ function DedicatedStudentDetailsContent() {
         <Users className="w-16 h-16 text-slate-300 mx-auto" />
         <div className="space-y-1">
           <h2 className="text-2xl font-black text-slate-900">
-            {isAr ? 'لم يتم العثور على سجل لهذا الطالب' : 'Student Record Not Found'}
+            {rosterError ? (isAr ? 'تعذر تحميل سجل الطالب' : 'Unable to load student record') : (isAr ? 'لم يتم العثور على سجل لهذا الطالب' : 'Student Record Not Found')}
           </h2>
           <p className="text-xs text-slate-500 font-semibold">
-            {isAr ? 'تأكد من صحة رابط الصفحة أو اختيار طالب موكل من القائمة.' : 'Verify student ID or select from assigned roster.'}
+            {rosterError || (isAr ? 'تأكد من صحة رابط الصفحة أو اختيار طالب موكل من القائمة.' : 'This student is not assigned to your account or is no longer available.')}
           </p>
         </div>
         <Link
-          href="/teacher/students"
+          href={role === 'ADMIN' ? '/admin/dashboard' : '/teacher/students'}
           className="inline-flex items-center gap-2 px-6 py-3 rounded-2xl bg-emerald-950 text-amber-400 font-extrabold text-xs shadow-md hover:brightness-110 transition-all"
         >
           <ArrowRight className="w-4 h-4" />
@@ -73,30 +93,21 @@ function DedicatedStudentDetailsContent() {
     );
   }
 
-  const prof = studentProfile || {
+  const prof: StudentProfile = studentProfile || {
     id: studentAccount?.id || studentId,
     nameAr: studentAccount?.name || 'طالب مجهول',
     nameEn: studentAccount?.name || 'Unknown Student',
     email: studentAccount?.email || '',
-    phone: studentAccount?.phone || '+966 50 000 0000',
-    verificationStatus: 'VERIFIED' as const,
-    activePlanId: 'plan-standard',
-    remainingLessons: 8,
+    phone: studentAccount?.phone || '',
+    verificationStatus: 'PENDING_VERIFICATION' as const,
+    activePlanId: null,
+    assignedTeacherId: null,
+    remainingLessons: 0,
     totalLessonsCompleted: 0,
-    totalHoursLearned: 0.0,
-    subscriptionStartDate: '2026-08-01',
-    subscriptionRenewalDate: '2026-09-01',
-    assignedTeacherId: 'tech-sulami',
-    quranGoal: {
-      track: 'COMBINED' as const,
-      targetSurahOrJuzAr: 'الحفظ: سورة البقرة | التلاوة: سورة يس',
-      agreedWeeklyDaysAr: ['الإثنين', 'الأربعاء'],
-      agreedWeeklyDaysEn: ['Monday', 'Wednesday'],
-      agreedTimeSlot: '12:00'
-    }
+    totalHoursLearned: 0,
   };
 
-  const activePlan = plans.find(p => p.id === (prof.activePlanId || 'plan-standard')) || plans[1];
+  const activePlan = prof.activePlanId ? plans.find(p => p.id === prof.activePlanId) : undefined;
   const allStudentLessons = lessons.filter(l => l.studentId === prof.id);
 
   const filteredStudentLessons = allStudentLessons.filter(l => {
@@ -105,12 +116,7 @@ function DedicatedStudentDetailsContent() {
     return true;
   });
 
-  const handleSaveMeetUrl = (lessonId: string) => {
-    if (updateMeetUrl) {
-      updateMeetUrl(lessonId, tempMeetUrl);
-    }
-    setEditingMeetUrlId(null);
-  };
+
 
   const handleCopyLink = (url: string, id: string) => {
     navigator.clipboard.writeText(url);
@@ -120,16 +126,17 @@ function DedicatedStudentDetailsContent() {
 
   return (
     <div className="py-10 bg-slate-50/80 min-h-screen">
+      {meetError && <p role="alert" className="text-rose-700 text-center">{meetError}</p>}
       <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 space-y-8">
-        
+
         {/* Top Breadcrumb Bar */}
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div className="flex items-center gap-2 text-xs font-semibold text-slate-500">
-            <Link href="/teacher/dashboard" className="hover:text-emerald-800 transition-colors">
+            <Link href={role === 'ADMIN' ? '/admin/dashboard' : '/teacher/dashboard'} className="hover:text-emerald-800 transition-colors">
               {isAr ? 'لوحة المعلم' : 'Dashboard'}
             </Link>
             <span>/</span>
-            <Link href="/teacher/students" className="hover:text-emerald-800 transition-colors">
+            <Link href={role === 'ADMIN' ? '/admin/dashboard' : '/teacher/students'} className="hover:text-emerald-800 transition-colors">
               {isAr ? 'إدارة الطلاب' : 'Students'}
             </Link>
             <span>/</span>
@@ -139,7 +146,7 @@ function DedicatedStudentDetailsContent() {
           </div>
 
           <Link
-            href="/teacher/students"
+            href={role === 'ADMIN' ? '/admin/dashboard' : '/teacher/students'}
             className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-700 hover:text-emerald-800 bg-white px-3.5 py-2 rounded-xl border border-slate-200 shadow-2xs transition-all hover:bg-slate-50 cursor-pointer"
           >
             <ArrowRight className="w-3.5 h-3.5" />
@@ -149,7 +156,7 @@ function DedicatedStudentDetailsContent() {
 
         {/* HERO PROFILE HEADER CARD */}
         <div className="bg-gradient-to-r from-emerald-950 via-slate-900 to-slate-950 rounded-3xl p-6 sm:p-8 text-white shadow-xl border border-emerald-800/40 space-y-6 relative overflow-hidden">
-          
+
           {/* Subtle Background Glow */}
           <div className="absolute top-0 left-1/4 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none"></div>
 
@@ -182,7 +189,7 @@ function DedicatedStudentDetailsContent() {
                   </span>
                   <span className="flex items-center gap-1.5 bg-white/10 px-2.5 py-1 rounded-lg">
                     <Phone className="w-3.5 h-3.5 text-amber-400" />
-                    <span>{prof.phone || '+966 50 000 0000'}</span>
+                    <span>{prof.phone || (isAr ? 'غير مضاف' : 'Not provided')}</span>
                   </span>
                 </div>
               </div>
@@ -193,8 +200,8 @@ function DedicatedStudentDetailsContent() {
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-5 border-t border-emerald-800/60 relative z-10">
             <div className="bg-white/10 backdrop-blur-md p-4 rounded-2xl border border-white/10 space-y-1">
               <span className="text-[11px] text-emerald-200/90 font-bold block">{isAr ? 'الباقة المعتمدة' : 'Active Subscription'}</span>
-              <p className="font-black text-base text-amber-300 truncate">{activePlan.titleAr}</p>
-              <span className="text-[10px] text-slate-300 font-semibold block">{activePlan.priceMonthlySar} ر.س / شهرياً</span>
+              <p className="font-black text-base text-amber-300 truncate">{activePlan ? (isAr ? activePlan.titleAr : activePlan.titleEn) : (isAr ? 'لا توجد باقة نشطة' : 'No active plan')}</p>
+              {activePlan && <span className="text-[10px] text-slate-300 font-semibold block">{activePlan.priceMonthlySar} ر.س / {isAr ? 'شهرياً' : 'month'}</span>}
             </div>
 
             <div className="bg-white/10 backdrop-blur-md p-4 rounded-2xl border border-white/10 space-y-1">
@@ -261,7 +268,7 @@ function DedicatedStudentDetailsContent() {
         {/* TAB 1: CLASSES SCHEDULE & MEET LINKS */}
         {activeTab === 'CLASSES' && (
           <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200 shadow-sm space-y-6 animate-in fade-in">
-            
+
             {/* Filter Pills */}
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-slate-100 pb-4">
               <div className="space-y-0.5">
@@ -269,7 +276,7 @@ function DedicatedStudentDetailsContent() {
                   {isAr ? 'جدول مواعيد الحصص وروابط قاعات التدريس' : 'Classes Timetable & Live Links'}
                 </h3>
                 <p className="text-xs text-slate-500 font-semibold">
-                  {isAr ? 'إدارة روابط القاعات وتتبع المواعيد المجدولة والمكتملة للطالب' : 'Manage Google Meet URLs and lesson statuses'}
+                  {isAr ? 'إدارة روابط القاعات وتتبع المواعيد المجدولة والمكتملة للطالب' : 'Manage meeting URLs and lesson statuses'}
                 </p>
               </div>
 
@@ -337,7 +344,7 @@ function DedicatedStudentDetailsContent() {
 
                           {lesson.surahTargetAr && (
                             <p className="text-xs text-slate-800 font-bold font-serif leading-relaxed">
-                              <span className="text-emerald-900 font-extrabold">{isAr ? 'المقرر:' : 'Scope:'}</span> {lesson.surahTargetAr}
+                              <span className="text-emerald-900 font-extrabold">{isAr ? 'المقرر:' : 'Scope:'}</span> {localizeQuranScope(isAr ? lesson.surahTargetAr : (lesson.surahTargetEn || lesson.surahTargetAr), isAr)}
                             </p>
                           )}
                         </div>
@@ -351,7 +358,7 @@ function DedicatedStudentDetailsContent() {
                               className="px-4 py-2.5 rounded-xl gold-gradient-bg text-emerald-950 font-black text-xs shadow-sm hover:brightness-105 flex items-center justify-center gap-1.5 transition-all"
                             >
                               <Video className="w-4 h-4" />
-                              <span>{isAr ? 'دخول القاعة المباشرة' : 'Join Google Meet'}</span>
+                              <span>{isAr ? 'دخول القاعة المباشرة' : 'Join class'}</span>
                               <ExternalLink className="w-3 h-3" />
                             </a>
                           )}
@@ -368,7 +375,7 @@ function DedicatedStudentDetailsContent() {
                       <div className="pt-3 border-t border-slate-100/80">
                         {isEditingThis ? (
                           <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 bg-emerald-50/80 p-3 rounded-2xl border border-emerald-300">
-                            <span className="text-xs font-bold text-emerald-950 shrink-0">{isAr ? 'رابط القاعة الجديد:' : 'New Meet Link:'}</span>
+                            <span className="text-xs font-bold text-emerald-950 shrink-0">{isAr ? 'رابط القاعة الجديد:' : 'New meeting link:'}</span>
                             <input
                               type="text"
                               value={tempMeetUrl}
@@ -394,7 +401,7 @@ function DedicatedStudentDetailsContent() {
                         ) : (
                           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 text-xs bg-slate-50/80 p-3 rounded-2xl border border-slate-200/80">
                             <div className="flex items-center gap-2 flex-wrap">
-                              <span className="text-slate-400 font-bold">{isAr ? 'رابط لقاء القاعة:' : 'Google Meet URL:'}</span>
+                              <span className="text-slate-400 font-bold">{isAr ? 'رابط لقاء القاعة:' : 'Meeting URL:'}</span>
                               {hasMeetLink ? (
                                 <a
                                   href={lesson.googleMeetUrl}
@@ -438,7 +445,7 @@ function DedicatedStudentDetailsContent() {
                                 }}
                                 className="px-3 py-1 bg-emerald-950 hover:bg-slate-900 text-amber-300 font-black text-xs rounded-lg shadow-2xs transition-colors cursor-pointer"
                               >
-                                {hasMeetLink ? (isAr ? 'تعديل الرابط' : 'Edit Link') : (isAr ? '+ إضافة رابط القاعة' : '+ Add Meet Link')}
+                                {hasMeetLink ? (isAr ? 'تعديل الرابط' : 'Edit Link') : (isAr ? '+ إضافة رابط القاعة' : '+ Add meeting link')}
                               </button>
                             </div>
                           </div>
@@ -477,15 +484,15 @@ function DedicatedStudentDetailsContent() {
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              
+
               {/* Target Surahs Box */}
               <div className="p-5 rounded-3xl bg-emerald-50/70 border border-emerald-200 space-y-3">
                 <span className="text-xs font-black text-emerald-800 uppercase tracking-wider block">{isAr ? 'المقرر والسور المحددة:' : 'Target Surahs / Scope:'}</span>
                 <p className="font-bold text-slate-900 text-base font-serif leading-relaxed">
-                  {prof.quranGoal?.targetSurahOrJuzAr || 'لم يتم تحديد السور بعد'}
+                  {(isAr ? prof.quranGoal?.targetSurahOrJuzAr : prof.quranGoal?.targetSurahOrJuzEn) || (isAr ? 'لم يتم تحديد السور بعد' : 'Curriculum not set yet')}
                 </p>
                 <div className="text-xs text-slate-600 font-medium border-t border-emerald-200/80 pt-2">
-                  {isAr ? 'ملاحظات المعلم:' : 'Scholar Notes:'} يتم توزيع السور على الحصص تلقائياً حسب الفهرس القرآني المعتمد.
+                  {isAr ? 'تُوزع السور على الحصص وفق الخطة المحفوظة.' : 'Class scopes follow the saved curriculum plan.'}
                 </div>
               </div>
 
@@ -501,14 +508,14 @@ function DedicatedStudentDetailsContent() {
                 <div className="flex items-center justify-between">
                   <span className="text-slate-500 font-bold">{isAr ? 'أيام التسميع الأسبوعية:' : 'Agreed Days:'}</span>
                   <span className="font-extrabold text-emerald-800">
-                    {prof.quranGoal?.agreedWeeklyDaysAr?.join(' • ') || 'الإثنين والأربعاء'}
+                  {(isAr ? prof.quranGoal?.agreedWeeklyDaysAr : prof.quranGoal?.agreedWeeklyDaysEn)?.join(' • ') || (isAr ? 'لم تحدد بعد' : 'Not set yet')}
                   </span>
                 </div>
 
                 <div className="flex items-center justify-between">
                   <span className="text-slate-500 font-bold">{isAr ? 'توقيت الحصة المعتمد:' : 'Time Slot:'}</span>
                   <span className="font-extrabold text-slate-900">
-                    {prof.quranGoal?.agreedTimeSlot || '12:00 م'}
+                    {prof.quranGoal?.agreedTimeSlot || (isAr ? 'لم يحدد بعد' : 'Not set yet')}
                   </span>
                 </div>
               </div>
@@ -539,19 +546,19 @@ function DedicatedStudentDetailsContent() {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-5 text-xs">
               <div className="p-5 rounded-3xl bg-slate-50 border border-slate-200 space-y-2">
                 <span className="text-slate-400 font-bold block">{isAr ? 'الباقة الفعالة:' : 'Active Plan:'}</span>
-                <h5 className="font-extrabold text-slate-900 text-sm">{activePlan.titleAr}</h5>
-                <p className="text-slate-600">{activePlan.priceMonthlySar} ر.س / شهرياً</p>
+                <h5 className="font-extrabold text-slate-900 text-sm">{activePlan ? (isAr ? activePlan.titleAr : activePlan.titleEn) : (isAr ? 'لا توجد باقة نشطة' : 'No active plan')}</h5>
+                {activePlan && <p className="text-slate-600">{activePlan.priceMonthlySar} ر.س / {isAr ? 'شهرياً' : 'month'}</p>}
               </div>
 
               <div className="p-5 rounded-3xl bg-slate-50 border border-slate-200 space-y-2">
                 <span className="text-slate-400 font-bold block">{isAr ? 'تاريخ بداية الاشتراك:' : 'Start Date:'}</span>
-                <h5 className="font-extrabold text-slate-900 text-sm">{prof.subscriptionStartDate || '2026-08-01'}</h5>
+                <h5 className="font-extrabold text-slate-900 text-sm">{prof.subscriptionStartDate || (isAr ? 'غير محدد' : 'Not set')}</h5>
                 <p className="text-slate-500">{isAr ? 'تفعيل الدورة الحالية' : 'Current cycle start'}</p>
               </div>
 
               <div className="p-5 rounded-3xl bg-emerald-50/80 border border-emerald-200 space-y-2">
                 <span className="text-emerald-800 font-bold block">{isAr ? 'تاريخ التجديد القادم:' : 'Next Renewal:'}</span>
-                <h5 className="font-black text-emerald-950 text-sm">{prof.subscriptionRenewalDate || '2026-09-01'}</h5>
+                <h5 className="font-black text-emerald-950 text-sm">{prof.subscriptionRenewalDate || (isAr ? 'غير محدد' : 'Not set')}</h5>
                 <p className="text-emerald-700 font-semibold">{isAr ? 'تجديد تلقائي قائم' : 'Active renewal'}</p>
               </div>
             </div>

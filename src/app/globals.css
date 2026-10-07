@@ -75,3 +75,40 @@ body {
 .animate-pulse-subtle {
   animation: pulse-subtle 4s ease-in-out infinite;
 }
+
+@keyframes sanad-orbit {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes sanad-orbit-reverse {
+  to { transform: rotate(-360deg); }
+}
+
+.sanad-orbit {
+  animation: sanad-orbit 28s linear infinite;
+}
+
+.sanad-orbit-reverse {
+  animation: sanad-orbit-reverse 42s linear infinite;
+}
+
+.sanad-portrait-glow {
+  background: radial-gradient(circle, rgba(16, 185, 129, 0.22) 0%, rgba(16, 185, 129, 0) 70%);
+  filter: blur(18px);
+  animation: pulse-subtle 5s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sanad-orbit,
+  .sanad-orbit-reverse,
+  .sanad-portrait-glow {
+    animation: none;
+  }
+}
+
+/* Visible keyboard focus and reduced motion apply throughout the portals. */
+:focus-visible { outline: 2px solid #047857; outline-offset: 3px; }
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
+}

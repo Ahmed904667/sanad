@@ -1,109 +1,76 @@
 'use client';
 
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useApp } from '@/context/AppContext';
 import { AvatarBadge } from '@/components/AvatarBadge';
 import { AuthGuard } from '@/components/AuthGuard';
+import type { UserAccount } from '@/types';
 import { getQuranTrackTitle } from '@/data/mockData';
-import { 
-  Users, 
-  Award, 
-  Target, 
-  Edit3,
-  ExternalLink,
+import {
+  Users,
+  Award,
   ChevronLeft,
-  ChevronRight,
-  BookOpen,
-  Calendar,
-  Sparkles
+  ChevronRight
 } from 'lucide-react';
 
 function TeacherStudentsContent() {
-  const { language, teacherProfile, currentUser, student, plans, userAccounts, lessons } = useApp();
+  const { language, currentUser, plans } = useApp();
   const isAr = language === 'ar';
+  const [teacherStudents, setTeacherStudents] = useState<UserAccount[]>([]);
+  const [rosterLoading, setRosterLoading] = useState(true);
+  const [rosterError, setRosterError] = useState('');
+  const [retryCount, setRetryCount] = useState(0);
 
-  const isTeacherRole = currentUser?.role === 'TEACHER';
-  const currentTeacherId = isTeacherRole 
-    ? currentUser.id 
-    : (student.assignedTeacherId || teacherProfile.id || 'tech-sulami');
+  useEffect(() => {
+    let cancelled = false;
+    const loadRoster = async () => {
+      setRosterLoading(true);
+      setRosterError('');
+      try {
+        const response = await fetch('/api/teacher/students', { cache: 'no-store' });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error || 'Unable to load your students.');
+        if (!cancelled) setTeacherStudents(Array.isArray(result.students) ? result.students as UserAccount[] : []);
+      } catch (error) {
+        if (!cancelled) setRosterError(error instanceof Error ? error.message : 'Unable to load your students.');
+      } finally {
+        if (!cancelled) setRosterLoading(false);
+      }
+    };
+    void loadRoster();
+    return () => { cancelled = true; };
+  }, [currentUser?.id, retryCount]);
 
-  // Filter ONLY students assigned to this teacher
-  const studentAccounts = userAccounts.filter(a => {
-    if (a.role !== 'STUDENT') return false;
-
-    const prof = a.studentProfile || (a.id === student.id ? student : undefined);
-    const assignedId = prof?.assignedTeacherId;
-
-    // Check if student profile explicitly assigns this teacher
-    if (assignedId && assignedId === currentTeacherId) {
-      return true;
-    }
-
-    // Check if student has active or past lessons with this teacher
-    const hasLessonWithTeacher = lessons.some(l => 
-      l.studentId === a.id && (l.teacherId === currentTeacherId || l.teacherNameAr === teacherProfile.nameAr)
-    );
-    if (hasLessonWithTeacher) return true;
-
-    // Fallback: If no assignedTeacherId is specified and teacher is default primary (tech-sulami)
-    if (!assignedId && currentTeacherId === 'tech-sulami') {
-      return true;
-    }
-
-    return false;
-  });
+  // The endpoint already enforces the teacher's assignment and class history scope.
+  const studentAccounts = teacherStudents.filter(account => account.role === 'STUDENT');
 
   const studentsList = studentAccounts.map(acc => {
-    const prof = acc.studentProfile || (acc.id === student.id ? student : {
-      id: acc.id,
-      nameAr: acc.name,
-      nameEn: acc.name,
-      email: acc.email,
-      phone: acc.phone,
-      activePlanId: 'plan-standard',
-      pendingPlanId: null,
-      remainingLessons: 8,
-      totalLessonsCompleted: 0,
-      totalHoursLearned: 0.0,
-      subscriptionStartDate: '2026-08-01',
-      subscriptionRenewalDate: '2026-09-01',
-      verificationStatus: 'VERIFIED' as const,
-      quranGoal: {
-        targetSurahOrJuzAr: 'سورة البقرة والجزء الثلاثون',
-        targetSurahOrJuzEn: 'Surah Al-Baqarah & Juz 30',
-        orientationCompleted: true,
-        agreedWeeklyDaysAr: ['الإثنين', 'الأربعاء'],
-        agreedWeeklyDaysEn: ['Monday', 'Wednesday'],
-        agreedTimeSlot: '12:00',
-        track: 'COMBINED' as const
-      }
-    });
+    const prof = acc.studentProfile;
+    const planId = prof?.activePlanId || prof?.pendingPlanId;
+    const plan = plans.find(p => p.id === planId);
 
-    const planId = prof.activePlanId || prof.pendingPlanId || 'plan-standard';
-    const plan = plans.find(p => p.id === planId) || plans[1];
-    
     return {
-      id: acc.id || prof.id,
-      nameAr: acc.name || prof.nameAr,
-      nameEn: acc.name || prof.nameEn,
-      email: acc.email || prof.email,
-      phone: acc.phone || prof.phone || '+966 50 000 0000',
-      planTitleAr: plan.titleAr,
-      planTitleEn: plan.titleEn,
-      remainingLessons: prof.remainingLessons ?? 8,
-      totalLessonsCompleted: prof.totalLessonsCompleted || 0,
-      totalHoursLearned: prof.totalHoursLearned || 0.0,
-      verificationStatus: prof.verificationStatus || 'VERIFIED',
-      targetSurahAr: prof.quranGoal?.targetSurahOrJuzAr || 'سورة البقرة والجزء الثلاثون',
-      trackAr: getQuranTrackTitle(prof.quranGoal?.track, isAr)
+      id: acc.id,
+      nameAr: prof?.nameAr || acc.name,
+      nameEn: prof?.nameEn || acc.name,
+      email: acc.email,
+      phone: acc.phone || prof?.phone,
+      planTitleAr: plan?.titleAr,
+      planTitleEn: plan?.titleEn,
+      remainingLessons: prof?.remainingLessons,
+      totalLessonsCompleted: prof?.totalLessonsCompleted,
+      totalHoursLearned: prof?.totalHoursLearned,
+      verificationStatus: prof?.verificationStatus,
+      targetSurahAr: prof?.quranGoal?.targetSurahOrJuzAr,
+      trackAr: prof?.quranGoal?.track ? getQuranTrackTitle(prof.quranGoal.track, isAr) : undefined
     };
   });
 
   return (
     <div className="py-10 bg-slate-50/70 min-h-screen">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-8">
-        
+
         {/* Header */}
         <div className="bg-gradient-to-r from-emerald-950 via-slate-900 to-slate-950 rounded-3xl p-6 sm:p-8 text-white shadow-xl flex flex-col md:flex-row items-center justify-between gap-6 border border-emerald-800/40">
           <div className="flex items-center gap-4">
@@ -134,7 +101,22 @@ function TeacherStudentsContent() {
             </h3>
           </div>
 
-          {studentsList.length > 0 ? (
+          {rosterError && (
+            <div role="alert" className="flex items-center justify-between gap-3 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-900">
+              <span>{rosterError}</span>
+              <button type="button" onClick={() => setRetryCount(count => count + 1)} className="font-bold underline">
+                {isAr ? 'إعادة المحاولة' : 'Retry'}
+              </button>
+            </div>
+          )}
+
+          {rosterLoading ? (
+            <div role="status" className="rounded-2xl border border-slate-200 bg-white p-8 text-center text-sm font-semibold text-slate-500">
+              {isAr ? 'جاري تحميل الطلاب...' : 'Loading assigned students…'}
+            </div>
+          ) :
+
+          studentsList.length > 0 ? (
             <div className="grid grid-cols-1 gap-4">
               {studentsList.map((std) => (
                 <div
@@ -154,20 +136,26 @@ function TeacherStudentsContent() {
                             ? 'bg-emerald-100 text-emerald-800'
                             : 'bg-amber-100 text-amber-900 border border-amber-300'
                         }`}>
-                          {std.verificationStatus === 'VERIFIED' ? (isAr ? 'مفعل' : 'Verified') : (isAr ? 'قيد المراجعة' : 'Pending')}
+                          {std.verificationStatus === 'VERIFIED'
+                            ? (isAr ? 'مفعل' : 'Verified')
+                            : std.verificationStatus
+                              ? (isAr ? 'قيد المراجعة' : 'Pending')
+                              : (isAr ? 'الملف غير مكتمل' : 'Profile incomplete')}
                         </span>
                       </div>
 
                       <p className="text-xs text-slate-500 font-medium">
-                        {std.email} | {std.phone}
+                        {[std.email, std.phone].filter(Boolean).join(' | ') || (isAr ? 'لا توجد بيانات اتصال' : 'No contact details')}
                       </p>
 
                       <div className="flex items-center gap-2 pt-1 text-xs">
                         <span className="bg-slate-100 text-slate-700 font-bold px-2.5 py-0.5 rounded-lg">
-                          {std.planTitleAr}
+                          {isAr ? (std.planTitleAr || 'لا توجد باقة') : (std.planTitleEn || 'No plan')}
                         </span>
                         <span className="text-emerald-800 font-bold">
-                          {std.remainingLessons} {isAr ? 'دروس متبقية' : 'lessons remaining'}
+                          {typeof std.remainingLessons === 'number'
+                            ? `${std.remainingLessons} ${isAr ? 'دروس متبقية' : 'lessons remaining'}`
+                            : (isAr ? 'الرصيد غير متاح' : 'Balance unavailable')}
                         </span>
                       </div>
                     </div>
@@ -177,7 +165,7 @@ function TeacherStudentsContent() {
                   <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 w-full md:w-auto border-t md:border-t-0 pt-4 md:pt-0 border-slate-100 justify-end">
                     <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-200 text-xs text-right min-w-[200px]">
                       <span className="text-slate-400 font-bold block mb-0.5">{isAr ? 'الهدف القرآني المتفق عليه:' : 'Quran Goal:'}</span>
-                      <span className="font-extrabold text-emerald-950 block font-serif">{std.targetSurahAr}</span>
+                      <span className="font-extrabold text-emerald-950 block font-serif">{std.targetSurahAr || (isAr ? 'لم يحدد بعد' : 'Not set yet')}</span>
                     </div>
 
                     <div className="flex items-center gap-2 w-full sm:w-auto">

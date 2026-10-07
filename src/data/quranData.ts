@@ -1,18 +1,19 @@
-import { 
-  getSurahMeta, 
-  getJuzMeta, 
+import { surahNamesEn } from 'quran-meta';
+import {
+  getSurahMeta,
+  getJuzMeta,
   findPage,
-  findPagebyAyahId, 
-  findJuzByAyahId, 
-  Surah, 
+  findPagebyAyahId,
+  findJuzByAyahId,
+  Surah,
   Juz,
   AyahNo
 } from 'quran-meta/hafs';
-import { 
-  resolveExactSurahsAndAyahsForPageRange, 
-  partitionSurahsAcrossClasses, 
+import {
+  resolveExactSurahsAndAyahsForPageRange,
+  partitionSurahsAcrossClasses,
   partitionJuzAcrossClasses,
-  ClassPlanSegment 
+  ClassPlanSegment
 } from './mushafPageData';
 
 export { partitionSurahsAcrossClasses, partitionJuzAcrossClasses };
@@ -96,7 +97,7 @@ export const QURAN_SURAHS: SurahInfo[] = Array.from({ length: 114 }, (_, i) => {
   return {
     number: surahNum,
     nameAr: sMeta.name,
-    nameEn: `Surah ${surahNum}`,
+    nameEn: surahNamesEn[surahNum][0] || `Surah ${surahNum}`,
     totalVerses: sMeta.ayahCount,
     juzNumber,
     startPage,
@@ -142,8 +143,8 @@ export function getPageForSurahAyah(surah: number, ayah: number): number {
 
 // UNIVERSAL EXACT RESOLUTION DIRECTLY CALLING QURAN-META
 export function getExactSurahsAndAyahsForPages(
-  startPage: number, 
-  endPage: number, 
+  startPage: number,
+  endPage: number,
   allowedSurahNumbers?: number[]
 ): string {
   return resolveExactSurahsAndAyahsForPageRange(startPage, endPage, allowedSurahNumbers);

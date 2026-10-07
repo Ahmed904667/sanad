@@ -25,7 +25,7 @@ export function generateConflictFreeSchedule(
   const targetDayIndices = selectedDaysAr.map(d => dayIndexMap[d]).filter(idx => idx !== undefined);
   const lessons: Lesson[] = [];
 
-  let currentDate = new Date();
+  const currentDate = new Date();
   let generatedCount = 0;
   let safetyCounter = 0;
 

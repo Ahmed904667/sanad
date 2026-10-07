@@ -1,19 +1,19 @@
-import { 
-  getPageMeta, 
-  findSurahAyahByAyahId, 
-  getSurahMeta, 
+import {
+  getPageMeta,
+  findSurahAyahByAyahId,
+  getSurahMeta,
   getJuzMeta,
   findPage,
   findPagebyAyahId,
-  Page, 
-  Surah, 
-  AyahNo, 
-  Juz 
+  Page,
+  Surah,
+  AyahNo,
+  Juz
 } from 'quran-meta/hafs';
 
 // UNIVERSAL 100% ACCURATE MUSHAF PAGE RESOLVER USING OFFICIAL QURAN-META LIBRARY
 export function resolveExactSurahsAndAyahsForPageRange(
-  startPage: number, 
+  startPage: number,
   endPage: number,
   allowedSurahNumbers?: number[]
 ): string {
@@ -37,7 +37,7 @@ export function resolveExactSurahsAndAyahsForPageRange(
         continue;
       }
       const surahMeta = getSurahMeta(surahNum as Surah);
-      
+
       let curStartA = 1;
       let curEndA = surahMeta.ayahCount;
 
@@ -62,7 +62,7 @@ export function resolveExactSurahsAndAyahsForPageRange(
     }
 
     return resultParts.join(' + ');
-  } catch (err) {
+  } catch {
     return safeStartPage === safeEndPage ? `صفحة ${safeStartPage}` : `صفحات (${startPage} إلى ${endPage})`;
   }
 }
@@ -99,10 +99,10 @@ export function formatExactPagesCount(exactPages: number): string {
   if (rounded > 2.25 && rounded <= 2.75) {
     return 'صفحتان ونصف تقريباً';
   }
-  
+
   const baseInt = Math.floor(rounded);
   const frac = Math.round((rounded - baseInt) * 10) / 10;
-  
+
   if (frac >= 0.35 && frac <= 0.65) {
     if (baseInt >= 3 && baseInt <= 10) {
       return `${baseInt} صفحات ونصف تقريباً`;
@@ -110,7 +110,7 @@ export function formatExactPagesCount(exactPages: number): string {
       return `${baseInt} صفحة ونصف تقريباً`;
     }
   }
-  
+
   const intVal = Math.round(rounded);
   if (intVal >= 3 && intVal <= 10) {
     return `${intVal} صفحات`;
@@ -153,7 +153,7 @@ function optimizePartitionCuts(
   // 3. For each internal cut, snap to closest boundary if within threshold
   for (let k = 1; k < K; k++) {
     const currentCut = cuts[k];
-    
+
     let closestBoundary: number | null = null;
     let minDistance = Infinity;
 
@@ -192,7 +192,7 @@ export function partitionSurahsAcrossClasses(
   totalLessonsInPlan: number
 ): ClassPlanSegment[] {
   const K = Math.max(1, totalLessonsInPlan);
-  
+
   // 1. Collect all verses in order
   const allVerses: { surahNum: number; ayahNum: number; page: number }[] = [];
   const uniquePages = new Set<number>();
@@ -271,7 +271,7 @@ export function partitionSurahsAcrossClasses(
 
     const summaryAr = parts.join(' + ');
     const pageRangeText = startPage === endPage ? `صفحة ${startPage}` : `صفحة ${startPage} إلى ${endPage}`;
-    
+
     // Exact fractional pages based on actual proportion of content
     const exactPages = (classVerses.length / V) * totalPagesSelected;
     const pagesCountText = formatExactPagesCount(exactPages);
@@ -298,7 +298,7 @@ export function partitionJuzAcrossClasses(
   totalLessonsInPlan: number
 ): ClassPlanSegment[] {
   const K = Math.max(1, totalLessonsInPlan);
-  
+
   // 1. Collect all verses in the selected Juz list in order
   const allVerses: { surahNum: number; ayahNum: number; page: number }[] = [];
   const uniquePages = new Set<number>();
@@ -376,7 +376,7 @@ export function partitionJuzAcrossClasses(
 
     const summaryAr = parts.join(' + ');
     const pageRangeText = startPage === endPage ? `صفحة ${startPage}` : `صفحة ${startPage} إلى ${endPage}`;
-    
+
     // Exact fractional pages based on actual proportion of content
     const exactPages = (classVerses.length / V) * totalPagesSelected;
     const pagesCountText = formatExactPagesCount(exactPages);

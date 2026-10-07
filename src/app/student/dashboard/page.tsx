@@ -1,100 +1,62 @@
 'use client';
 
+import { AccessibleModal } from '@/components/AccessibleModal';
+
 import React, { useState, useMemo } from 'react';
 import Link from 'next/link';
+import { UNAVAILABLE_TEACHER } from '@/utils/unavailableTeacher';
 import { useApp } from '@/context/AppContext';
+import { localizeQuranScope } from '@/utils/localization';
+import { receiptFileToDataUrl } from '@/lib/receiptFile';
+import { formatAvailabilityRanges } from '@/utils/timeFormat';
 import { AvatarBadge } from '@/components/AvatarBadge';
 import { ClassCalendar } from '@/components/ClassCalendar';
-import { ReviewModal } from '@/components/ReviewModal';
 import { PaymentWizardModal } from '@/components/PaymentWizardModal';
-import { BatchRescheduleModal } from '@/components/BatchRescheduleModal';
 import { TeacherReviewsModal } from '@/components/TeacherReviewsModal';
 import { AuthGuard } from '@/components/AuthGuard';
 import { Teacher } from '@/types';
-import { getPageMeta } from 'quran-meta/hafs';
 import { getDayNameArFromDate } from '@/data/quranData';
+import { getTeacherAvailableSlots, lessonTimeRange, timeRangesOverlap } from '@/utils/availability';
 import { TeacherDatePicker } from '@/components/TeacherDatePicker';
-import { 
-  Calendar, 
-  Clock, 
-  Video, 
-  BookOpen, 
-  Award, 
-  CheckCircle2, 
-  Star, 
-  Sparkles, 
+import {
+  Calendar,
+  Clock,
+  Video,
+  CheckCircle2,
+  Star,
+  Sparkles,
   ExternalLink,
   PlusCircle,
   AlertCircle,
   Building2,
-  Hourglass,
   Target,
-  Edit3,
   Trophy,
-  Flame,
-  Zap,
-  FileCheck,
-  BookmarkCheck,
   XCircle
 } from 'lucide-react';
 
-// HELPER TO EXTRACT EXACT PAGE BOUNDS AND CALCULATE EXACT AYAH & PAGE COUNTS DYNAMICALLY
-function calculateExactLessonStats(surahTargetAr?: string) {
-  if (!surahTargetAr) return { pages: 0, ayahs: 0 };
-
-  let totalPages = 0;
-  let totalAyahs = 0;
-
-  // Extract page ranges matching "صفحة X" or "صفحات (X إلى Y)"
-  const pageRangeRegex = /صفحات?\s*\(?(\d+)(?:\s*إلى\s*(\d+))?\)?/g;
-  let match;
-
-  while ((match = pageRangeRegex.exec(surahTargetAr)) !== null) {
-    const startP = parseInt(match[1], 10);
-    const endP = match[2] ? parseInt(match[2], 10) : startP;
-
-    if (!isNaN(startP) && startP >= 1 && startP <= 604) {
-      const validEndP = !isNaN(endP) && endP >= startP ? Math.min(604, endP) : startP;
-      const pagesInChunk = validEndP - startP + 1;
-      totalPages += pagesInChunk;
-
-      // Query quran-meta dynamically for exact ayahs in this page range
-      const firstAyahId = getPageMeta(startP as any).firstAyahId;
-      const lastAyahId = getPageMeta(validEndP as any).lastAyahId;
-      const ayahsInChunk = Math.max(1, lastAyahId - firstAyahId + 1);
-      totalAyahs += ayahsInChunk;
-    }
-  }
-
-  return { pages: totalPages, ayahs: totalAyahs };
-}
-
 function StudentDashboardContent() {
-  const { 
+  const {
     isHydrated,
-    language, 
-    student, 
+    language,
+    student,
     currentUser,
-    plans, 
-    lessons, 
-    teachers, 
-    selectedPlanForCheckout, 
+    plans,
+    lessons,
+    teachers,
+    selectedPlanForCheckout,
     setSelectedPlanForCheckout,
     scheduleExtraLesson,
     resubmitPaymentReceipt
   } = useApp();
   const isAr = language === 'ar';
 
-  const [reviewTeacherInfo, setReviewTeacherInfo] = useState<{ id: string; name: string } | null>(null);
   const [showScheduleExtraModal, setShowScheduleExtraModal] = useState(false);
-  const [showBatchRescheduleModal, setShowBatchRescheduleModal] = useState(false);
   const [showResubmitModal, setShowResubmitModal] = useState(false);
-  const [resubmitBankRef, setResubmitBankRef] = useState('');
-  const [resubmitReceiptFile, setResubmitReceiptFile] = useState<File | null>(null);
 
   const [modalReviewsTeacher, setModalReviewsTeacher] = useState<Teacher | null>(null);
   const [newReceiptFile, setNewReceiptFile] = useState<File | null>(null);
   const [newBankRef, setNewBankRef] = useState('');
+  const [receiptUploadError, setReceiptUploadError] = useState('');
   const todayStr = useMemo(() => new Date().toISOString().split('T')[0], []);
   const [extraDate, setExtraDate] = useState(() => {
     const d = new Date();
@@ -104,119 +66,110 @@ function StudentDashboardContent() {
   const [extraTime, setExtraTime] = useState('14:00');
   const [extraSurah, setExtraSurah] = useState('');
 
-  const activePlan = plans.find(p => p.id === (student.activePlanId || student.pendingPlanId)) || plans[1];
-  const assignedTeacher = teachers.find(t => t.id === student.assignedTeacherId) || teachers[0];
+  const activePlan = plans.find(p => p.id === student.activePlanId)
+    || plans.find(p => p.id === student.pendingPlanId)
+    || plans[0];
+  const hasActiveSubscription = student.verificationStatus === 'VERIFIED' && Boolean(student.activePlanId);
+  const assignedTeacher = teachers.find(t => t.id === student.assignedTeacherId) || UNAVAILABLE_TEACHER;
 
   // STRICT STUDENT DATA ISOLATION & PLAN QUOTA ENFORCEMENT
   const currentStudentId = currentUser?.id || student.id;
-  const rawStudentLessons = lessons.filter(l => 
-    (l.studentId === currentStudentId || 
+  const rawStudentLessons = lessons.filter(l =>
+    (l.studentId === currentStudentId ||
      l.studentId === student.id ||
-     (currentUser?.email && l.studentId.toLowerCase() === currentUser.email.toLowerCase())) && 
+     (currentUser?.email && l.studentId.toLowerCase() === currentUser.email.toLowerCase())) &&
     l.status !== 'CANCELLED'
   );
 
   const orientationLesson = rawStudentLessons.find(l => l.isOrientationSession);
   const regularLessons = rawStudentLessons.filter(l => !l.isOrientationSession);
 
-  const affectedCancelledLessonsCount = useMemo(() => {
-    const maxPlanQuota = activePlan?.lessonsPerMonth || 8;
-    const allCancelled = lessons.filter(l => 
-      (l.studentId === currentStudentId || 
-       (currentUser?.email && l.studentId === currentUser.email.toLowerCase())) &&
-      l.status === 'CANCELLED' &&
-      !l.isOrientationSession
-    );
-    return allCancelled.slice(-maxPlanQuota).length;
-  }, [lessons, currentStudentId, currentUser, activePlan]);
 
   const completedRegularLessons = regularLessons.filter(l => l.status === 'COMPLETED');
-  const totalPlanLessons = activePlan.lessonsPerMonth + (student.extraPurchasedClassesCount || 0);
+  const totalPlanLessons = hasActiveSubscription ? activePlan.lessonsPerMonth + (student.extraPurchasedClassesCount || 0) : 0;
+  const remainingLessonsCount = hasActiveSubscription ? Math.max(0, student.remainingLessons || 0) : 0;
   const actualCompletedCount = completedRegularLessons.length;
+  const scheduledRegularLessons = regularLessons.filter(lesson => lesson.status === 'SCHEDULED');
+  const unscheduledPaidCredits = hasActiveSubscription ? Math.max(0, remainingLessonsCount - scheduledRegularLessons.length) : 0;
+  const affectedScheduledCount = hasActiveSubscription ? scheduledRegularLessons.filter(lesson => lesson.needsRescheduling).length : 0;
+  const scheduleAttentionCount = unscheduledPaidCredits + affectedScheduledCount;
+
 
   // Allowed upcoming scheduled classes strictly constrained by active plan quota (e.g. all 8 regular classes)
-  const allowedUpcomingCount = Math.max(0, totalPlanLessons - actualCompletedCount);
+  const allowedUpcomingCount = hasActiveSubscription ? remainingLessonsCount : 0;
   const upcomingRegularLessons = regularLessons
     .filter(l => l.status === 'SCHEDULED')
     .slice(0, allowedUpcomingCount);
 
   // Combined active lessons: exactly all 8 regular plan lessons PLUS the +1 Free orientation session
-  const studentLessons = orientationLesson 
+  const studentLessons = orientationLesson
     ? [orientationLesson, ...completedRegularLessons, ...upcomingRegularLessons]
     : [...completedRegularLessons, ...upcomingRegularLessons];
 
   // Calculate exact hours learned dynamically from completed lessons
   const dynamicTotalHours = completedRegularLessons.reduce((acc, l) => acc + (l.durationMinutes || 30), 0) / 60;
-  const displayHours = dynamicTotalHours > 0 ? dynamicTotalHours.toFixed(1) : (student.totalHoursLearned || 0).toFixed(1);
+  const displayHours = dynamicTotalHours.toFixed(1);
 
-  // Calculate exact pages and ayahs dynamically from completed lessons surah targets
-  let dynamicPagesMemorized = 0;
-  let dynamicAyahsMemorized = 0;
-  let dynamicPagesRead = 0;
-
-  completedRegularLessons.forEach(l => {
-    const rawTarget = l.surahTargetAr || '';
-    const parts = rawTarget.split('|').map(p => p.trim());
-    const hifzTarget = parts.find(p => p.includes('الحفظ') || !p.includes('التلاوة')) || parts[0];
-    const tilawahTarget = parts.find(p => p.includes('التلاوة'));
-
-    const hifzStats = calculateExactLessonStats(hifzTarget);
-    dynamicPagesMemorized += hifzStats.pages;
-    dynamicAyahsMemorized += hifzStats.ayahs;
-
-    if (tilawahTarget) {
-      const tilawahStats = calculateExactLessonStats(tilawahTarget);
-      dynamicPagesRead += tilawahStats.pages;
+  // Legacy lessons store display scopes rather than measured learning outcomes.
+  // Count unique scoped pages; do not present this as memorization proficiency.
+  const coveredPages = new Set<number>();
+  for (const completed of completedRegularLessons) {
+    const regex = /صفح(?:ة|ات)\s*\(?(\d+)(?:\s*(?:إلى|-)\s*(\d+))?\)?/g;
+    for (const match of (completed.surahTargetAr || '').matchAll(regex)) {
+      const from = Number(match[1]); const to = Number(match[2] || match[1]);
+      if (from >= 1 && to <= 604 && to >= from) for (let page = from; page <= to; page++) coveredPages.add(page);
     }
-  });
+  }
+  const dynamicPagesMemorized = coveredPages.size;
 
-  // Calculate target pages for full plan dynamically
-  let targetPagesMonthly = 0;
-  studentLessons.forEach(l => {
-    const stats = calculateExactLessonStats(l.surahTargetAr);
-    targetPagesMonthly += stats.pages;
-  });
-  if (targetPagesMonthly === 0) targetPagesMonthly = totalPlanLessons * 3;
-
-  const dynamicCompletionPercentage = Math.min(100, Math.round((actualCompletedCount / totalPlanLessons) * 100));
-  const remainingLessonsCount = Math.max(0, totalPlanLessons - actualCompletedCount);
+  const dynamicCompletionPercentage = totalPlanLessons > 0
+    ? Math.min(100, Math.round((actualCompletedCount / totalPlanLessons) * 100))
+    : 0;
   const nextLesson = studentLessons.find(l => l.status === 'SCHEDULED') || upcomingRegularLessons[0];
-  const nextLessonTeacherNameAr = nextLesson?.teacherNameAr || assignedTeacher?.nameAr || 'الشيخ أ.د. إبراهيم السلمي';
-  const nextLessonTeacherNameEn = nextLesson?.teacherNameEn || assignedTeacher?.nameEn || 'Sheikh Prof. Ibrahim Al-Sulami';
+  const nextLessonTeacherNameAr = nextLesson?.teacherNameAr || assignedTeacher?.nameAr || 'المعلم';
+  const nextLessonTeacherNameEn = nextLesson?.teacherNameEn || assignedTeacher?.nameEn || 'Your teacher';
 
-  const handleScheduleExtraSubmit = (e: React.FormEvent) => {
+  const [extraSaving, setExtraSaving] = useState(false);
+  const [extraError, setExtraError] = useState('');
+  const [receiptSaving, setReceiptSaving] = useState(false);
+  const handleScheduleExtraSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (extraDate < todayStr) return;
-    scheduleExtraLesson(
+    if (extraSaving) return;
+    setExtraSaving(true); setExtraError('');
+    try { await scheduleExtraLesson(
       extraDate,
       extraTime,
       extraSurah || (isAr ? 'حصة إضافية مدمجة ضمن الخطة' : 'Integrated Extra Class')
     );
     setShowScheduleExtraModal(false);
     setExtraSurah('');
+    } catch(error) { setExtraError(error instanceof Error ? error.message : 'Unable to schedule class.'); } finally { setExtraSaving(false); }
   };
 
   const teacherSlots = useMemo(() => {
-    const startHour = parseInt((assignedTeacher.workingHoursStart || '12:00').split(':')[0], 10);
-    const endHour = parseInt((assignedTeacher.workingHoursEnd || '18:00').split(':')[0], 10);
-
     // Get all scheduled lessons for this teacher on extraDate
     const bookedLessonsOnDate = lessons.filter(
       l => l.teacherId === assignedTeacher.id && l.date === extraDate && l.status === 'SCHEDULED'
     );
-    const bookedTimesOnDate = bookedLessonsOnDate.map(l => l.time.trim());
+    const day = getDayNameArFromDate(extraDate);
 
     const slots: { rawSlot: string; formattedText: string; isBooked: boolean }[] = [];
-    for (let h = startHour; h <= endHour; h++) {
-      const slotStr = `${h.toString().padStart(2, '0')}:00`;
+    const availableTimes = getTeacherAvailableSlots(assignedTeacher, day, activePlan.lessonDurationMinutes);
+    for (const slotStr of availableTimes) {
+      const [hour, minute] = slotStr.split(':').map(Number);
       const isStaticBooked = assignedTeacher.bookedTimeSlots?.includes(slotStr);
-      const isDateBooked = bookedTimesOnDate.includes(slotStr);
+      const candidate = lessonTimeRange(slotStr, activePlan.lessonDurationMinutes);
+      const isDateBooked = Boolean(candidate && bookedLessonsOnDate.some(lesson => {
+        const booked = lessonTimeRange(lesson.time, lesson.durationMinutes || activePlan.lessonDurationMinutes);
+        return booked && timeRangesOverlap(candidate, booked);
+      }));
       const isBooked = isStaticBooked || isDateBooked;
 
-      const displayHour = h % 12 === 0 ? 12 : h % 12;
-      const periodAr = h >= 12 ? 'م' : 'ص';
-      const periodEn = h >= 12 ? 'PM' : 'AM';
-      const formattedText = `${displayHour}:00 ${isAr ? periodAr : periodEn}`;
+      const displayHour = hour % 12 === 0 ? 12 : hour % 12;
+      const periodAr = hour >= 12 ? 'م' : 'ص';
+      const periodEn = hour >= 12 ? 'PM' : 'AM';
+      const formattedText = `${displayHour}:${String(minute).padStart(2, '0')} ${isAr ? periodAr : periodEn}`;
 
       slots.push({
         rawSlot: slotStr,
@@ -225,7 +178,7 @@ function StudentDashboardContent() {
       });
     }
     return slots;
-  }, [assignedTeacher, extraDate, lessons, isAr]);
+  }, [assignedTeacher, extraDate, lessons, isAr, activePlan.lessonDurationMinutes]);
 
   if (!isHydrated) {
     return (
@@ -241,7 +194,7 @@ function StudentDashboardContent() {
   return (
     <div className="py-8 bg-slate-50/80 min-h-screen">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-6">
-        
+
         {/* REJECTION ALERT BANNER */}
         {student.verificationStatus === 'UNVERIFIED' && student.rejectionReason && (
           <div className="bg-red-50 border-2 border-red-300 text-red-950 p-5 rounded-3xl space-y-3 shadow-md animate-in fade-in">
@@ -273,12 +226,12 @@ function StudentDashboardContent() {
 
         {/* MAIN 2-COLUMN DASHBOARD GRID */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-          
+
           {/* ======================================================== */}
           {/* LEFT MAIN COLUMN: NEXT CLASS HERO & INTERACTIVE SCHEDULE */}
           {/* ======================================================== */}
           <div className="lg:col-span-8 space-y-6">
-            
+
             {/* NEXT UPCOMING LESSON HERO CARD */}
             {nextLesson ? (
               <div className="bg-gradient-to-br from-emerald-950 via-slate-900 to-slate-950 text-white rounded-3xl p-6 sm:p-7 shadow-lg border border-emerald-800/40 relative overflow-hidden">
@@ -301,7 +254,7 @@ function StudentDashboardContent() {
                       </h3>
                       {nextLesson.surahTargetAr && (
                         <div className="bg-slate-800/80 border border-slate-700/70 p-3 rounded-2xl text-xs text-emerald-300 font-semibold leading-relaxed">
-                          <span className="font-bold text-amber-200">{isAr ? 'مقرر الحصة:' : 'Lesson Target:'}</span> {nextLesson.surahTargetAr}
+                          <span className="font-bold text-amber-200">{isAr ? 'مقرر الحصة:' : 'Lesson Target:'}</span> {localizeQuranScope(isAr ? nextLesson.surahTargetAr : (nextLesson.surahTargetEn || nextLesson.surahTargetAr), isAr)}
                         </div>
                       )}
                     </div>
@@ -361,13 +314,13 @@ function StudentDashboardContent() {
             ) : (
               <div className="bg-white rounded-3xl p-7 border border-slate-200 text-center space-y-3 shadow-xs">
                 <CheckCircle2 className="w-10 h-10 text-emerald-600 mx-auto" />
-                <h3 className="font-black text-base text-slate-900">{isAr ? 'أحسنت! لا توجد حصص قادمة مجدولة حالياً' : 'All scheduled classes completed!'}</h3>
-                <p className="text-xs text-slate-500 font-medium">{isAr ? 'يمكنك تجديد اشتراكك الشهري أو شراء حصص إضافية لمواصلة الحفظ والتلاوة.' : 'You can renew your plan or buy extra classes to keep learning.'}</p>
+                <h3 className="font-black text-base text-slate-900">{isAr ? 'لا توجد حصص قادمة مجدولة حالياً' : 'No upcoming classes scheduled'}</h3>
+                <p className="text-xs text-slate-500 font-medium">{unscheduledPaidCredits > 0 ? (isAr ? 'لديك رصيد مدفوع متاح. راجع خطتك لاختيار مواعيد الحصص.' : 'You have paid credits available. Review your plan to choose class times.') : (isAr ? 'يمكنك تجديد اشتراكك الشهري أو شراء حصص إضافية لمواصلة الحفظ والتلاوة.' : 'You can renew your plan or buy extra classes to keep learning.')}</p>
               </div>
             )}
 
             {/* EXTRA CLASS / REPLACEMENT CREDIT ALERT (IF AVAILABLE) */}
-            {(affectedCancelledLessonsCount > 0 || (student.extraClassCredits || 0) > 0) && (
+            {(scheduleAttentionCount > 0) && (
               <div className="bg-amber-50 border-2 border-amber-300 rounded-3xl p-5 sm:p-6 shadow-sm flex flex-col md:flex-row items-start md:items-center justify-between gap-5 animate-in fade-in">
                 <div className="flex items-start gap-4">
                   <div className="w-12 h-12 rounded-2xl gold-gradient-bg text-emerald-950 flex items-center justify-center shrink-0 shadow-sm mt-0.5">
@@ -376,31 +329,30 @@ function StudentDashboardContent() {
                   <div className="space-y-1">
                     <div className="flex items-center gap-2 flex-wrap">
                       <h4 className="font-black text-base text-amber-950">
-                        {isAr 
-                          ? `تنبيه الرصيد: لديك (${affectedCancelledLessonsCount || student.extraClassCredits || 4}) حصص ملغاة متأثرة بتعديل جدول المعلم!` 
-                          : `Balance Notice: You have (${affectedCancelledLessonsCount || student.extraClassCredits || 4}) cancelled classes available for rescheduling!`}
+                        {isAr
+                          ? `تحتاج ${scheduleAttentionCount} حصص إلى جدولة أو تعديل الموعد`
+                          : `${scheduleAttentionCount} classes need scheduling or a new time`}
                       </h4>
                       <span className="bg-amber-200 text-amber-950 text-[10px] font-black px-2.5 py-0.5 rounded-full border border-amber-300">
                         {isAr ? 'يتطلب إعادة جدولة' : 'Needs Rescheduling'}
                       </span>
                     </div>
                     <p className="text-amber-900 text-xs font-semibold leading-relaxed">
-                      {isAr 
-                        ? 'اختر التوقيتات الجديدة المناسبة لك من جدول معلمك لجدولة الحصص المتأثرة فقط بنقرة واحدة.' 
-                        : 'Pick preferred slots to reschedule your affected classes only.'}
+                      {isAr
+                        ? `${unscheduledPaidCredits} أرصدة مدفوعة غير مجدولة، و${affectedScheduledCount} حصص مجدولة تحتاج موعداً جديداً. راجع خطتك لاختيار الأوقات المناسبة.`
+                        : `${unscheduledPaidCredits} paid credits are not scheduled; ${affectedScheduledCount} scheduled classes need a new time. Review your plan to choose available slots.`}
                     </p>
                   </div>
                 </div>
 
                 <div className="shrink-0 w-full md:w-auto">
-                  <button
-                    type="button"
-                    onClick={() => setShowBatchRescheduleModal(true)}
+                  <Link
+                    href="/student/plan-builder#schedule-section"
                     className="w-full sm:w-auto px-6 py-3.5 rounded-xl gold-gradient-bg text-emerald-950 font-black text-xs shadow-xs hover:brightness-105 transition-all flex items-center justify-center gap-2 cursor-pointer"
                   >
                     <Sparkles className="w-4 h-4 text-emerald-950" />
-                    <span>{isAr ? `إعادة جدولة الحصص المتأثرة (${affectedCancelledLessonsCount || student.extraClassCredits || 4} حصص)` : 'Reschedule Affected Classes Only'}</span>
-                  </button>
+                    <span>{isAr ? 'مراجعة جدول الحصص' : 'Review class schedule'}</span>
+                  </Link>
                 </div>
               </div>
             )}
@@ -417,7 +369,7 @@ function StudentDashboardContent() {
           {/* RIGHT SIDEBAR: PROFILE, PROGRESS METRICS & QUICK ACTIONS */}
           {/* ======================================================== */}
           <div className="lg:col-span-4 space-y-5">
-            
+
             {/* STUDENT & PLAN CARD */}
             <div className="bg-white rounded-3xl p-5 sm:p-6 border border-slate-200/90 shadow-sm space-y-4">
               <div className="flex items-center gap-3.5">
@@ -427,7 +379,11 @@ function StudentDashboardContent() {
                     {isAr ? student.nameAr : student.nameEn}
                   </h3>
                   <span className="inline-block bg-emerald-100 text-emerald-900 border border-emerald-300 text-[10px] font-extrabold px-2.5 py-0.5 rounded-full">
-                    {isAr ? activePlan.titleAr : activePlan.titleEn}
+                    {hasActiveSubscription
+                      ? (isAr ? activePlan.titleAr : activePlan.titleEn)
+                      : student.pendingPlanId
+                        ? `${isAr ? 'بانتظار اعتماد: ' : 'Pending approval: '}${isAr ? activePlan.titleAr : activePlan.titleEn}`
+                        : (isAr ? 'لا يوجد اشتراك نشط' : 'No active subscription')}
                   </span>
                 </div>
               </div>
@@ -443,7 +399,7 @@ function StudentDashboardContent() {
                 </div>
                 <span className="bg-amber-50 text-amber-900 border border-amber-200 text-[10px] font-black px-2 py-0.5 rounded-md flex items-center gap-1">
                   <Star className="w-3 h-3 fill-amber-400 text-amber-400" />
-                  <span>{assignedTeacher.rating}</span>
+                  <span>{assignedTeacher.reviewsCount ? assignedTeacher.rating : (isAr ? 'لا توجد تقييمات' : 'No reviews yet')}</span>
                 </span>
               </div>
 
@@ -455,7 +411,7 @@ function StudentDashboardContent() {
                   className="w-full py-2.5 px-3.5 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-950 font-black text-xs text-center flex items-center justify-center gap-2 border border-amber-300/80 transition-all cursor-pointer shadow-2xs"
                 >
                   <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-500" />
-                  <span>{isAr ? 'تقييم المعلم المشرف' : 'Rate Instructor'}</span>
+                  <span>{isAr ? 'آراء الطلاب عن المعلم' : 'Instructor reviews'}</span>
                 </button>
 
                 <div className="grid grid-cols-2 gap-2">
@@ -493,7 +449,7 @@ function StudentDashboardContent() {
               {/* 3 Metrics Grid */}
               <div className="grid grid-cols-3 gap-2 text-center">
                 <div className="bg-slate-50 p-2.5 rounded-2xl border border-slate-100">
-                  <span className="text-[10px] text-slate-500 font-semibold block">{isAr ? 'الحفظ' : 'Mastered'}</span>
+                  <span className="text-[10px] text-slate-500 font-semibold block">{isAr ? 'صفحات المقرر' : 'Scoped pages'}</span>
                   <span className="text-base sm:text-lg font-black text-emerald-900 block my-0.5">{dynamicPagesMemorized}</span>
                   <span className="text-[9px] text-slate-400 font-bold block">{isAr ? 'صفحة' : 'pages'}</span>
                 </div>
@@ -511,6 +467,7 @@ function StudentDashboardContent() {
                 </div>
               </div>
 
+<p className="text-[10px] text-slate-500">{isAr ? 'الصفحات من مقررات الحصص المكتملة؛ لا تمثل قياساً مستقلاً لإتقان الحفظ.' : 'Pages come from completed class scopes; this is not an independent measure of memorization proficiency.'}</p>
               {/* Progress Bar */}
               <div className="space-y-1.5 pt-1">
                 <div className="flex items-center justify-between text-[11px] font-bold text-slate-600">
@@ -529,7 +486,7 @@ function StudentDashboardContent() {
 
       {/* SCHEDULE EXTRA CLASS MODAL */}
       {showScheduleExtraModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+        <AccessibleModal onClose={() => setShowScheduleExtraModal(false)} aria-label={isAr ? "جدولة حصة إضافية" : "Schedule extra class"} className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
           <div className="bg-white rounded-3xl max-w-lg w-full p-6 sm:p-8 shadow-2xl border border-slate-100 space-y-6">
             <div className="flex items-center justify-between border-b border-slate-100 pb-4">
               <div className="flex items-center gap-3">
@@ -546,14 +503,15 @@ function StudentDashboardContent() {
                 </div>
               </div>
               <button
-                onClick={() => setShowScheduleExtraModal(false)}
+                aria-label={isAr ? "إغلاق" : "Close"} onClick={() => setShowScheduleExtraModal(false)}
                 className="p-1.5 rounded-full text-slate-400 hover:bg-slate-100 cursor-pointer"
               >
                 ✕
               </button>
             </div>
 
-            <form onSubmit={handleScheduleExtraSubmit} className="space-y-4 text-xs font-semibold">
+            {extraError && <p role="alert" className="text-rose-700 text-xs">{extraError}</p>}
+            <form onSubmit={handleScheduleExtraSubmit} aria-busy={extraSaving} className="space-y-4 text-xs font-semibold">
               <TeacherDatePicker
                 selectedDate={extraDate}
                 onSelectDate={setExtraDate}
@@ -567,7 +525,7 @@ function StudentDashboardContent() {
                     {isAr ? 'الوقت المفضل (حسب أوقات المعلم المتاحة):' : 'Available Time Slot:'}
                   </label>
                   <span className="text-[10px] text-emerald-800 font-bold bg-emerald-50 px-2 py-0.5 rounded-md">
-                    {isAr ? `ساعات المعلم: من ${assignedTeacher.workingHoursStart || '12:00'} حتى ${assignedTeacher.workingHoursEnd || '18:00'}` : `Hours: ${assignedTeacher.workingHoursStart} - ${assignedTeacher.workingHoursEnd}`}
+                    {isAr ? 'أوقات المعلم: ' : 'Teacher availability: '}{formatAvailabilityRanges(assignedTeacher.availabilityRanges, assignedTeacher.workingHoursStart, assignedTeacher.workingHoursEnd, isAr, assignedTeacher.availabilityByDay)}
                   </span>
                 </div>
 
@@ -605,8 +563,8 @@ function StudentDashboardContent() {
                   <span>{isAr ? 'دمج تلقائي ضمن تقسيم الخطة القرآنية:' : 'Automatic Plan Division Integration:'}</span>
                 </div>
                 <p>
-                  {isAr 
-                    ? 'عند تأكيد الحصة، ستتم إضافتها وإعادة توزيع صفحات ومقرر الخطة القرآنية تلقائياً بالتساوي على إجمالي الحصص.' 
+                  {isAr
+                    ? 'عند تأكيد الحصة، ستتم إضافتها وإعادة توزيع صفحات ومقرر الخطة القرآنية تلقائياً بالتساوي على إجمالي الحصص.'
                     : 'Upon confirming, this class will be integrated, and your target pages will be redistributed evenly across all classes.'}
                 </p>
               </div>
@@ -644,7 +602,7 @@ function StudentDashboardContent() {
                     <div className="flex items-center gap-3 pt-2">
                       <button
                         type="button"
-                        onClick={() => setShowScheduleExtraModal(false)}
+                        aria-label={isAr ? "إغلاق" : "Close"} onClick={() => setShowScheduleExtraModal(false)}
                         className="flex-1 py-2.5 rounded-xl border border-slate-200 text-slate-700 text-xs font-bold cursor-pointer"
                       >
                         {isAr ? 'إلغاء' : 'Cancel'}
@@ -666,15 +624,7 @@ function StudentDashboardContent() {
               })()}
             </form>
           </div>
-        </div>
-      )}
-
-      {reviewTeacherInfo && (
-        <ReviewModal
-          teacherId={reviewTeacherInfo.id}
-          teacherName={reviewTeacherInfo.name}
-          onClose={() => setReviewTeacherInfo(null)}
-        />
+        </AccessibleModal>
       )}
 
       {selectedPlanForCheckout && (
@@ -685,13 +635,10 @@ function StudentDashboardContent() {
         />
       )}
 
-      <BatchRescheduleModal
-        isOpen={showBatchRescheduleModal}
-        onClose={() => setShowBatchRescheduleModal(false)}
-      />
+
       {/* RE-UPLOAD RECEIPT MODAL FOR REJECTED APPLICATIONS */}
       {showResubmitModal && (
-        <div className="fixed inset-0 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in">
+        <AccessibleModal onClose={() => setShowResubmitModal(false)} aria-label={isAr ? "إعادة إرسال إيصال الدفع" : "Resubmit payment receipt"} className="fixed inset-0 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in">
           <div className="bg-white rounded-3xl p-6 sm:p-8 max-w-lg w-full space-y-6 shadow-2xl border border-slate-200">
             <div className="flex items-center justify-between border-b border-slate-100 pb-4">
               <div className="flex items-center gap-3">
@@ -708,7 +655,7 @@ function StudentDashboardContent() {
                 </div>
               </div>
               <button
-                onClick={() => setShowResubmitModal(false)}
+                aria-label={isAr ? "إغلاق" : "Close"} onClick={() => setShowResubmitModal(false)}
                 className="text-slate-400 hover:text-slate-600 p-1 cursor-pointer"
               >
                 <XCircle className="w-5 h-5" />
@@ -718,7 +665,11 @@ function StudentDashboardContent() {
             <div className="space-y-4 text-xs font-semibold">
               <div className="bg-amber-50/80 border border-amber-200 rounded-2xl p-4 space-y-1.5 text-amber-950">
                 <div className="font-extrabold text-amber-900">
-                  {isAr ? `الباقة الحالية: ${activePlan.titleAr} (${activePlan.priceMonthlySar} ر.س)` : `Plan: ${activePlan.titleEn}`}
+                  {hasActiveSubscription
+                    ? (isAr ? `الباقة الحالية: ${activePlan.titleAr} (${activePlan.priceMonthlySar} ر.س)` : `Plan: ${activePlan.titleEn}`)
+                    : student.pendingPlanId
+                      ? (isAr ? `طلب الاشتراك بانتظار المراجعة: ${activePlan.titleAr}` : `Subscription pending review: ${activePlan.titleEn}`)
+                      : (isAr ? 'لا يوجد اشتراك نشط' : 'No active subscription')}
                 </div>
                 <div className="text-[11px] text-amber-800">
                   {isAr ? `المعلم المختار: ${assignedTeacher.nameAr}` : `Teacher: ${assignedTeacher.nameEn}`}
@@ -737,11 +688,16 @@ function StudentDashboardContent() {
                 </label>
                 <input
                   type="file"
-                  accept="image/*,.pdf"
-                  onChange={(e) => setNewReceiptFile(e.target.files?.[0] || null)}
+                  accept="image/jpeg,image/png,image/webp,application/pdf,.jpg,.jpeg,.png,.webp,.pdf"
+                  onChange={(e) => {
+                    setNewReceiptFile(e.target.files?.[0] || null);
+                    setReceiptUploadError('');
+                  }}
                   className="block w-full p-2 rounded-xl border border-slate-300 text-xs font-medium cursor-pointer"
                 />
               </div>
+
+              {receiptUploadError && <p role="alert" className="text-sm text-red-700">{receiptUploadError}</p>}
 
               <div className="space-y-2">
                 <label className="block text-slate-800 font-bold">
@@ -759,16 +715,23 @@ function StudentDashboardContent() {
 
             <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-100">
               <button
-                onClick={() => setShowResubmitModal(false)}
+                aria-label={isAr ? "إغلاق" : "Close"} onClick={() => setShowResubmitModal(false)}
                 className="px-4 py-2.5 rounded-xl border border-slate-300 text-slate-700 text-xs font-bold hover:bg-slate-50 transition-colors cursor-pointer"
               >
                 {isAr ? 'إلغاء' : 'Cancel'}
               </button>
               <button
-                onClick={() => {
-                  const receiptName = newReceiptFile ? newReceiptFile.name : 'إيصال_تحويل_محدث.png';
+                disabled={!newReceiptFile || receiptSaving}
+                onClick={async () => {
+                  if (!newReceiptFile || receiptSaving) return;
+                  setReceiptSaving(true);
                   const refCode = newBankRef.trim() || ('REF-' + Math.floor(100000 + Math.random() * 900000));
-                  resubmitPaymentReceipt(receiptName, refCode);
+                  try {
+                    await resubmitPaymentReceipt(await receiptFileToDataUrl(newReceiptFile), refCode);
+                  } catch (error) {
+                    setReceiptUploadError(error instanceof Error ? error.message : 'Could not read receipt.');
+                    return;
+                  } finally { setReceiptSaving(false); }
                   setShowResubmitModal(false);
                 }}
                 className="px-6 py-2.5 rounded-xl gold-gradient-bg text-emerald-950 font-black text-xs shadow-md hover:brightness-110 transition-all cursor-pointer flex items-center gap-1.5"
@@ -778,7 +741,7 @@ function StudentDashboardContent() {
               </button>
             </div>
           </div>
-        </div>
+        </AccessibleModal>
       )}
 
         {/* TEACHER REVIEWS MODAL */}

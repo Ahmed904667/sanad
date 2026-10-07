@@ -12,6 +12,8 @@ export interface StudentQuranGoal {
   targetSurahOrJuzAr: string;
   targetSurahOrJuzEn: string;
   orientationCompleted: boolean;
+  orientationDate?: string;
+  orientationTime?: string;
   agreedWeeklyDaysAr: string[];
   agreedWeeklyDaysEn: string[];
   agreedTimeSlot?: string; // Selected primary time slot (e.g. "12:00")
@@ -41,11 +43,12 @@ export interface UserAccount {
   id: string;
   name: string;
   email: string;
-  password: string;
+  password?: never;
   gender: 'MALE' | 'FEMALE';
   role: Role;
   phone?: string;
   isBlocked?: boolean;
+  teacherApprovalStatus?: TeacherApprovalStatus;
   studentProfile?: StudentProfile;
   teacherProfile?: TeacherProfile;
 }
@@ -97,6 +100,8 @@ export interface Teacher {
   bioEn: string;
   hourlyRateSar: number;
   availableSlots: string[];
+  availabilityByDay?: Record<string, { start: string; end: string }[]>;
+  availabilityRanges?: { start: string; end: string }[];
   workingHoursStart: string; // e.g. "12:00"
   workingHoursEnd: string;   // e.g. "18:00"
   workingDaysAr?: string[];  // e.g. ["الأحد", "الإثنين", "الثلاثاء", "الأربعاء", "الخميس"]
@@ -129,11 +134,15 @@ export interface StudentProfile {
   nextCyclePlanId?: string | null;
   pendingPlanId?: string | null;
   subscriptionChangeType?: SubscriptionChangeType;
+  paymentRequestStatus?: "PENDING" | "APPROVED" | "REJECTED";
+  paymentRequestId?: string;
+  pausedAt?: string;
   subscriptionStartDate?: string;
   subscriptionRenewalDate?: string;
   remainingLessons: number;
   extraClassCredits?: number;
   extraPurchasedClassesCount?: number;
+  pendingExtraClassQuantity?: number;
   totalLessonsCompleted: number;
   totalHoursLearned: number;
   assignedTeacherId: string | null;
@@ -177,6 +186,8 @@ export interface Review {
   id: string;
   teacherId: string;
   studentId?: string;
+  lessonId?: string;
+  isMine?: boolean;
   studentNameAr: string;
   studentNameEn: string;
   rating: number;

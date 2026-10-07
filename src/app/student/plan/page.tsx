@@ -2,77 +2,45 @@
 
 import React, { useMemo } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { localizeQuranScope } from '@/utils/localization';
+import { UNAVAILABLE_TEACHER } from '@/utils/unavailableTeacher';
 import { useApp } from '@/context/AppContext';
+import { formatAvailabilityRanges } from '@/utils/timeFormat';
 import { AvatarBadge } from '@/components/AvatarBadge';
 import { AuthGuard } from '@/components/AuthGuard';
 import { SUBSCRIPTION_GOALS } from '@/data/mockData';
-import { getPageMeta } from 'quran-meta/hafs';
-import { 
-  Target, 
-  Edit3, 
-  BookOpen, 
-  Calendar, 
-  Clock, 
-  Star, 
-  CheckCircle2, 
-  Sparkles, 
-  PlusCircle, 
-  ChevronLeft, 
-  ChevronRight,
+import {
+  Target,
+  Edit3,
+  Star,
+  CheckCircle2,
+  Sparkles,
+  PlusCircle,
   Award,
-  BookmarkCheck,
-  Trophy,
   Layers,
-  ArrowRight,
-  ShieldCheck,
   UserCheck
 } from 'lucide-react';
 
-function calculateExactLessonStats(surahTargetAr?: string) {
-  if (!surahTargetAr) return { pages: 0, ayahs: 0 };
-  let totalPages = 0;
-  let totalAyahs = 0;
-  const pageRangeRegex = /صفحات?\s*\(?(\d+)(?:\s*إلى\s*(\d+))?\)?/g;
-  let match;
-  while ((match = pageRangeRegex.exec(surahTargetAr)) !== null) {
-    const startP = parseInt(match[1], 10);
-    const endP = match[2] ? parseInt(match[2], 10) : startP;
-    if (!isNaN(startP) && startP >= 1 && startP <= 604) {
-      const validEndP = !isNaN(endP) && endP >= startP ? Math.min(604, endP) : startP;
-      const pagesInChunk = validEndP - startP + 1;
-      totalPages += pagesInChunk;
-      const firstAyahId = getPageMeta(startP as any).firstAyahId;
-      const lastAyahId = getPageMeta(validEndP as any).lastAyahId;
-      const ayahsInChunk = Math.max(1, lastAyahId - firstAyahId + 1);
-      totalAyahs += ayahsInChunk;
-    }
-  }
-  return { pages: totalPages, ayahs: totalAyahs };
-}
-
 function StudentPlanOverviewContent() {
-  const router = useRouter();
-  const { 
+  const {
     isHydrated,
-    language, 
-    student, 
+    language,
+    student,
     currentUser,
-    plans, 
-    lessons, 
-    teachers 
+    plans,
+    lessons,
+    teachers
   } = useApp();
   const isAr = language === 'ar';
 
   const activePlan = plans.find(p => p.id === (student.activePlanId || student.pendingPlanId)) || plans[1];
-  const assignedTeacher = teachers.find(t => t.id === student.assignedTeacherId) || teachers[0];
+  const assignedTeacher = teachers.find(t => t.id === student.assignedTeacherId) || UNAVAILABLE_TEACHER;
 
   // Student lessons isolation & quota calculation
   const currentStudentId = currentUser?.id || student.id;
-  const studentLessons = lessons.filter(l => 
-    (l.studentId === currentStudentId || 
-     (l.studentNameAr && l.studentNameAr === student.nameAr) ||
-     (currentUser?.email && l.studentId === currentUser.email.toLowerCase())) && 
+  const studentLessons = lessons.filter(l =>
+    (l.studentId === currentStudentId ||
+     (currentUser?.email && l.studentId === currentUser.email.toLowerCase())) &&
     l.status !== 'CANCELLED' &&
     !l.isOrientationSession
   );
@@ -83,9 +51,9 @@ function StudentPlanOverviewContent() {
   const basePlanLessons = activePlan.lessonsPerMonth;
   const extraClassesCount = student.extraPurchasedClassesCount || 0;
   const totalPlanLessons = basePlanLessons + extraClassesCount;
-  
+
   const actualCompletedCount = completedLessons.length;
-  const remainingLessonsCount = Math.max(0, totalPlanLessons - actualCompletedCount);
+  const remainingLessonsCount = Math.max(0, student.remainingLessons || 0);
   const completionPercentage = Math.min(100, Math.round((actualCompletedCount / totalPlanLessons) * 100));
 
   // Strictly enforce plan quota on displayed classes list (completed + sliced upcoming)
@@ -95,19 +63,10 @@ function StudentPlanOverviewContent() {
   }, [completedLessons, upcomingLessons, remainingLessonsCount]);
 
   // Goal & Track info
-  const goalTrack = student.quranGoal?.track || 'HIFZ';
+  const goalTrack = student.quranGoal?.track;
   const matchingGoal = SUBSCRIPTION_GOALS.find(g => g.id === goalTrack);
   const goalTitle = isAr ? (matchingGoal?.titleAr || 'مسار الحفظ المتقن') : (matchingGoal?.titleEn || 'Quran Memorization Track');
-  const targetSummaryText = student.quranGoal?.targetSurahOrJuzAr || 'سورة البقرة (كاملة)';
-
-  // Calculate dynamic stats
-  let totalPagesMastered = 0;
-  completedLessons.forEach(l => {
-    const stats = calculateExactLessonStats(l.surahTargetAr);
-    totalPagesMastered += stats.pages;
-  });
-
-  const totalLearningHours = ((actualCompletedCount * 30) / 60).toFixed(1);
+  const targetSummaryText = (isAr ? student.quranGoal?.targetSurahOrJuzAr : student.quranGoal?.targetSurahOrJuzEn) || (isAr ? 'لم يُحدد المقرر بعد' : 'Curriculum not set yet');
 
   if (!isHydrated) {
     return (
@@ -123,7 +82,7 @@ function StudentPlanOverviewContent() {
   return (
     <div className="py-8 bg-slate-50/80 min-h-screen">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-6">
-        
+
         {/* 1. TOP HEADER & BREADCRUMB */}
         <div className="bg-white rounded-3xl p-6 sm:p-7 border border-slate-200 shadow-sm flex flex-col md:flex-row items-start md:items-center justify-between gap-5">
           <div className="space-y-1.5">
@@ -141,8 +100,8 @@ function StudentPlanOverviewContent() {
               </span>
             </h1>
             <p className="text-xs sm:text-sm text-slate-500 font-medium">
-              {isAr 
-                ? 'استعراض شامل لمسارك القرآني، المعلم المشرف، وتوزيع الحصص المكتملة والمتبقية.' 
+              {isAr
+                ? 'استعراض شامل لمسارك القرآني، المعلم المشرف، وتوزيع الحصص المكتملة والمتبقية.'
                 : 'Complete overview of your Quran track, supervising instructor, and class distribution.'}
             </p>
           </div>
@@ -169,7 +128,7 @@ function StudentPlanOverviewContent() {
 
         {/* 2. OVERVIEW CARDS: TRACK INFO, TEACHER & STATS */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-          
+
           {/* Card 1: Quran Track & Goal */}
           <div className="bg-white rounded-3xl p-6 border border-slate-200 shadow-sm space-y-4">
             <div className="flex items-center justify-between">
@@ -183,9 +142,9 @@ function StudentPlanOverviewContent() {
               </p>
             </div>
             <div className="text-[11px] text-slate-500 font-medium">
-              {isAr 
-                ? `نظام الحصص: ${basePlanLessons} حصة أساسية ${extraClassesCount > 0 ? `+ ${extraClassesCount} حصة إضافية` : ''} (30 دقيقة للحصة)` 
-                : `${basePlanLessons} base classes ${extraClassesCount > 0 ? `+ ${extraClassesCount} extra` : ''} (30 min each)`}
+              {isAr
+                ? `نظام الحصص: ${basePlanLessons} حصة أساسية ${extraClassesCount > 0 ? `+ ${extraClassesCount} حصة إضافية` : ''} (${activePlan?.lessonDurationMinutes || 5} دقائق للحصة)`
+                : `${basePlanLessons} base classes ${extraClassesCount > 0 ? `+ ${extraClassesCount} extra` : ''} (${activePlan?.lessonDurationMinutes || 5} min each)`}
             </div>
           </div>
 
@@ -206,9 +165,9 @@ function StudentPlanOverviewContent() {
                 </p>
                 <div className="flex items-center gap-1 text-[10px] text-amber-700 font-bold">
                   <Star className="w-3 h-3 fill-amber-400 text-amber-400" />
-                  <span>{assignedTeacher.rating}</span>
+                  <span>{assignedTeacher.reviewsCount ? assignedTeacher.rating : (isAr ? 'لا توجد تقييمات' : 'No reviews yet')}</span>
                   <span className="text-slate-300">•</span>
-                  <span>{isAr ? `الساعات المتاحة: ${assignedTeacher.workingHoursStart || '12:00'} - ${assignedTeacher.workingHoursEnd || '18:00'}` : `Hours: ${assignedTeacher.workingHoursStart} - ${assignedTeacher.workingHoursEnd}`}</span>
+                  <span>{isAr ? 'الأوقات المتاحة: ' : 'Available times: '}{formatAvailabilityRanges(assignedTeacher.availabilityRanges, assignedTeacher.workingHoursStart, assignedTeacher.workingHoursEnd, isAr, assignedTeacher.availabilityByDay)}</span>
                 </div>
               </div>
             </div>
@@ -239,7 +198,7 @@ function StudentPlanOverviewContent() {
 
         {/* 3. CLASS BY CLASS BREAKDOWN (التوزيع والحساب التلقائي لخطة الحصص) */}
         <div className="bg-slate-900 rounded-3xl p-6 sm:p-8 text-white space-y-6 border border-slate-800 shadow-lg">
-          
+
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-slate-800 pb-5">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-2xl bg-amber-400/20 text-amber-300 border border-amber-400/30 flex items-center justify-center">
@@ -250,8 +209,8 @@ function StudentPlanOverviewContent() {
                   {isAr ? 'التوزيع والحساب التلقائي لخطة الحصص (بالصفحات)' : 'Auto-Calculated Class Plan Breakdown'}
                 </h3>
                 <p className="text-xs text-slate-400 font-medium">
-                  {isAr 
-                    ? `مقسم بالتساوي على (${totalPlanLessons}) حصص [${basePlanLessons} أساسية ${extraClassesCount > 0 ? `+ ${extraClassesCount} إضافية` : ''}] حسب باقتك (${activePlan.titleAr})` 
+                  {isAr
+                    ? `مقسم بالتساوي على (${totalPlanLessons}) حصص [${basePlanLessons} أساسية ${extraClassesCount > 0 ? `+ ${extraClassesCount} إضافية` : ''}] حسب باقتك (${activePlan.titleAr})`
                     : `Evenly divided across ${totalPlanLessons} classes [${basePlanLessons} base ${extraClassesCount > 0 ? `+ ${extraClassesCount} extra` : ''}] based on ${activePlan.titleEn}`}
                 </p>
               </div>
@@ -270,13 +229,13 @@ function StudentPlanOverviewContent() {
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
             {displayLessons.map((lesson, idx) => {
               const isCompleted = lesson.status === 'COMPLETED';
-              const isExtra = lesson.id.startsWith('les-ext') || 
-                (lesson.notes && lesson.notes.includes('إضافية')) || 
+              const isExtra = lesson.id.startsWith('les-ext') ||
+                (lesson.notes && lesson.notes.includes('إضافية')) ||
                 (lesson.surahTargetAr && lesson.surahTargetAr.includes('إضافية')) ||
                 (idx + 1 > basePlanLessons);
 
               return (
-                <div 
+                <div
                   key={lesson.id}
                   className={`p-4 rounded-2xl flex items-start gap-3 transition-all ${
                     isCompleted
@@ -289,8 +248,8 @@ function StudentPlanOverviewContent() {
                   <div className={`w-8 h-8 rounded-xl text-xs font-black flex items-center justify-center shrink-0 mt-0.5 ${
                     isCompleted
                       ? 'bg-emerald-600 text-white shadow-xs'
-                      : isExtra 
-                      ? 'bg-amber-400/20 text-amber-300 border border-amber-400/30' 
+                      : isExtra
+                      ? 'bg-amber-400/20 text-amber-300 border border-amber-400/30'
                       : 'bg-emerald-700/60 text-emerald-200'
                   }`}>
                     {isCompleted ? '✓' : idx + 1}
@@ -300,10 +259,10 @@ function StudentPlanOverviewContent() {
                     <div className="flex items-center justify-between gap-1 flex-wrap">
                       <div className="flex items-center gap-1.5 flex-wrap">
                         <span className={`text-xs font-black ${
-                          isCompleted 
-                            ? 'text-emerald-300' 
-                            : isExtra 
-                            ? 'text-amber-300' 
+                          isCompleted
+                            ? 'text-emerald-300'
+                            : isExtra
+                            ? 'text-amber-300'
                             : 'text-amber-200'
                         }`}>
                           {isAr ? `الحصة ${idx + 1} من ${totalPlanLessons}` : `Class ${idx + 1} of ${totalPlanLessons}`}
@@ -332,12 +291,12 @@ function StudentPlanOverviewContent() {
                     <p className={`text-xs font-semibold leading-relaxed break-words ${
                       isCompleted ? 'text-emerald-100' : 'text-slate-200'
                     }`}>
-                      {lesson.surahTargetAr || (isAr ? 'مقرر الحصة' : 'Lesson Target')}
+                      {localizeQuranScope(isAr ? lesson.surahTargetAr : (lesson.surahTargetEn || lesson.surahTargetAr), isAr) || (isAr ? 'مقرر الحصة' : 'Lesson Target')}
                     </p>
 
                     <div className="flex items-center justify-between text-[10px] font-semibold text-slate-400 pt-1">
                       <span>{lesson.time} ({lesson.durationMinutes}m)</span>
-                      <Link 
+                      <Link
                         href={`/classes/${lesson.id}`}
                         className="text-amber-400 hover:text-amber-300 underline font-bold"
                       >

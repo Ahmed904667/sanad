@@ -1,36 +1,31 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import Link from 'next/link';
 import { useApp } from '@/context/AppContext';
+import { formatAvailabilityRanges } from '@/utils/timeFormat';
+import { UNAVAILABLE_TEACHER } from '@/utils/unavailableTeacher';
 import { AvatarBadge } from '@/components/AvatarBadge';
 import { TeacherAvailabilityModal } from '@/components/TeacherAvailabilityModal';
 import { AuthGuard } from '@/components/AuthGuard';
-import { 
-  User, 
-  Mail, 
-  Phone, 
-  ShieldCheck, 
-  Award, 
-  Calendar, 
-  GraduationCap, 
-  Globe, 
-  CheckCircle2, 
+import {
+  User,
+  Mail,
+  Phone,
+  ShieldCheck,
   Save,
   LogOut,
-  Edit3,
   Clock
 } from 'lucide-react';
 
 function ProfileContent() {
-  const { 
-    language, 
-    role, 
-    currentUser, 
-    student, 
-    teacherProfile, 
-    teachers, 
-    plans, 
+  const {
+    language,
+    role,
+    currentUser,
+    student,
+    teacherProfile,
+    teachers,
+    plans,
     logout,
     updateUserProfile
   } = useApp();
@@ -40,27 +35,53 @@ function ProfileContent() {
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [ijazah, setIjazah] = useState('');
+  const [teacherTitle, setTeacherTitle] = useState('');
+  const [experienceYears, setExperienceYears] = useState(0);
+  const [languagesSpoken, setLanguagesSpoken] = useState('');
+  const [specializations, setSpecializations] = useState('');
+  const [teacherBio, setTeacherBio] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
   const [savedSuccess, setSavedSuccess] = useState(false);
+  const [saveError, setSaveError] = useState('');
   const [isAvailabilityModalOpen, setIsAvailabilityModalOpen] = useState(false);
 
   useEffect(() => {
     if (currentUser) {
+      // The profile form is initialized from session data after AuthGuard hydration.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setName(currentUser.nameAr || currentUser.nameEn || (role === 'STUDENT' ? student.nameAr : teacherProfile.nameAr));
       setEmail(currentUser.email || (role === 'STUDENT' ? student.email : teacherProfile.email));
       setPhone(role === 'STUDENT' ? (student.phone || '') : (teacherProfile.phone || ''));
       setIjazah(teacherProfile.ijazahChainAr || '');
+      setTeacherTitle(teacherProfile.titleAr || '');
+      setExperienceYears(teacherProfile.experienceYears || 0);
+      setLanguagesSpoken(teacherProfile.languagesSpoken?.join(', ') || '');
+      setSpecializations(teacherProfile.specializationsAr?.join(', ') || '');
+      setTeacherBio(teacherProfile.bioAr || '');
     }
   }, [currentUser, role, student, teacherProfile]);
 
   const activePlan = plans.find(p => p.id === (student.activePlanId || student.pendingPlanId)) || plans[1];
-  const assignedTeacher = teachers.find(t => t.id === student.assignedTeacherId) || teachers[0];
+  const assignedTeacher = teachers.find(t => t.id === student.assignedTeacherId) || UNAVAILABLE_TEACHER;
 
-  const handleSaveProfile = (e: React.FormEvent) => {
+  const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name.trim() || !email.trim()) return;
-    updateUserProfile(name, email, phone, ijazah);
-    setSavedSuccess(true);
-    setTimeout(() => setSavedSuccess(false), 3000);
+    if (isSaving || !name.trim() || !email.trim()) return;
+    setIsSaving(true);
+    setSaveError('');
+    try {
+      await updateUserProfile(name, email, phone, ijazah, currentUser?.role === 'TEACHER' ? {
+        title: teacherTitle,
+        experienceYears,
+        languages: languagesSpoken,
+        specializations,
+        bio: teacherBio,
+      } : undefined);
+      setSavedSuccess(true);
+      setTimeout(() => setSavedSuccess(false), 3000);
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : (isAr ? 'تعذر حفظ الملف الشخصي.' : 'Unable to save your profile.'));
+    } finally { setIsSaving(false); }
   };
 
   const displayName = currentUser?.nameAr || currentUser?.nameEn || name || 'المستخدم';
@@ -68,7 +89,7 @@ function ProfileContent() {
   return (
     <div className="py-12 bg-slate-50/70 min-h-screen">
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 space-y-8">
-        
+
         {/* Profile Card Header */}
         <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200 shadow-sm flex flex-col md:flex-row items-center justify-between gap-6">
           <div className="flex items-center gap-5 text-center md:text-start">
@@ -120,6 +141,7 @@ function ProfileContent() {
               {isAr ? 'تم حفظ التعديلات بنجاح!' : 'Profile updated successfully!'}
             </div>
           )}
+          {saveError && <p role="alert" className="text-xs font-bold text-rose-700">{saveError}</p>}
 
           <form onSubmit={handleSaveProfile} className="space-y-4">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -173,21 +195,35 @@ function ProfileContent() {
             </div>
 
             {currentUser?.role === 'TEACHER' && (
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">
-                  {isAr ? 'تفاصيل الإجازة بالسند المتصل:' : 'Ijazah Chain Details:'}
+              <div className="space-y-4 rounded-2xl border border-emerald-100 bg-emerald-50/40 p-4">
+                <h3 className="font-extrabold text-emerald-950">{isAr ? 'ملفك التعريفي كمعلم' : 'Teacher profile'}</h3>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <label className="text-xs font-bold text-slate-700">{isAr ? 'المسمى التعليمي' : 'Teaching title'}
+                    <input value={teacherTitle} onChange={e => setTeacherTitle(e.target.value)} maxLength={120} className="mt-1 w-full p-3 rounded-xl border border-slate-300 bg-white" placeholder={isAr ? 'معلم قرآن وتجويد' : 'Quran and Tajweed teacher'} />
+                  </label>
+                  <label className="text-xs font-bold text-slate-700">{isAr ? 'سنوات الخبرة' : 'Years of experience'}
+                    <input type="number" min={0} max={60} value={experienceYears} onChange={e => setExperienceYears(Number(e.target.value))} className="mt-1 w-full p-3 rounded-xl border border-slate-300 bg-white" />
+                  </label>
+                  <label className="text-xs font-bold text-slate-700">{isAr ? 'اللغات (افصل بينها بفاصلة)' : 'Languages (comma separated)'}
+                    <input value={languagesSpoken} onChange={e => setLanguagesSpoken(e.target.value)} maxLength={300} className="mt-1 w-full p-3 rounded-xl border border-slate-300 bg-white" placeholder={isAr ? 'العربية، الإنجليزية' : 'Arabic, English'} />
+                  </label>
+                  <label className="text-xs font-bold text-slate-700">{isAr ? 'مجالات التعليم' : 'Teaching specializations'}
+                    <input value={specializations} onChange={e => setSpecializations(e.target.value)} maxLength={500} className="mt-1 w-full p-3 rounded-xl border border-slate-300 bg-white" placeholder={isAr ? 'حفظ، تجويد، تصحيح تلاوة' : 'Memorization, Tajweed, recitation'} />
+                  </label>
+                </div>
+                <label className="block text-xs font-bold text-slate-700">{isAr ? 'نبذة عن المعلم' : 'About the teacher'}
+                  <textarea rows={3} value={teacherBio} onChange={e => setTeacherBio(e.target.value)} maxLength={2000} className="mt-1 w-full p-3 rounded-xl border border-slate-300 bg-white" />
                 </label>
-                <textarea
-                  rows={3}
-                  value={ijazah}
-                  onChange={(e) => setIjazah(e.target.value)}
-                  className="w-full p-3 rounded-2xl border border-slate-300 text-xs font-serif text-slate-800"
-                />
+                <label className="block text-xs font-bold text-slate-700">{isAr ? 'الإجازة والسند' : 'Ijazah and certification'}
+                  <textarea rows={3} value={ijazah} onChange={e => setIjazah(e.target.value)} maxLength={2000} className="mt-1 w-full p-3 rounded-xl border border-slate-300 bg-white font-serif" />
+                </label>
               </div>
             )}
 
             <button
               type="submit"
+              disabled={isSaving}
+              aria-busy={isSaving}
               className="px-6 py-3.5 rounded-2xl emerald-gradient-bg text-white font-extrabold text-xs shadow-md hover:opacity-95 transition-all flex items-center gap-2 cursor-pointer"
             >
               <Save className="w-4 h-4 text-amber-400" />
@@ -209,7 +245,7 @@ function ProfileContent() {
                     {isAr ? 'أوقات وساعات العمل اليومية' : 'Daily Working Hours & Availability'}
                   </h3>
                   <p className="text-xs text-emerald-200/80 font-medium">
-                    {isAr ? `من ${teacherProfile.workingHoursStart || '12:00'} حتى ${teacherProfile.workingHoursEnd || '18:00'}` : `Hours: ${teacherProfile.workingHoursStart} - ${teacherProfile.workingHoursEnd}`}
+                    {formatAvailabilityRanges(teacherProfile.availabilityRanges, teacherProfile.workingHoursStart, teacherProfile.workingHoursEnd, isAr, teacherProfile.availabilityByDay)}
                   </p>
                 </div>
               </div>
@@ -224,7 +260,7 @@ function ProfileContent() {
             </div>
 
             <p className="text-xs text-emerald-200/90 font-medium leading-relaxed">
-              {isAr 
+              {isAr
                 ? 'يمكنك تعديل توقيت الدوام اليومي في أي وقت. في حال وجود حصص مجدولة سابقة متعارضة، يوفر النظام خيارات المعالجة التلقائية أو الإبقاء عليها لحماية مواعيد الطلاب.'
                 : 'Manage your daily working slots. System auto-handles scheduled class conflicts.'}
             </p>
@@ -247,8 +283,8 @@ function ProfileContent() {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
               <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-1">
                 <span className="text-slate-400 font-bold block">{isAr ? 'المعلم الحالي:' : 'Current Teacher:'}</span>
-                <span className="font-extrabold text-slate-900 text-sm block">{assignedTeacher.nameAr}</span>
-                <span className="text-emerald-700 font-serif text-[11px] block">{assignedTeacher.ijazahDetailsAr}</span>
+                <span className="font-extrabold text-slate-900 text-sm block">{isAr ? assignedTeacher.nameAr : assignedTeacher.nameEn}</span>
+                <span className="text-emerald-700 font-serif text-[11px] block">{isAr ? assignedTeacher.ijazahDetailsAr : assignedTeacher.ijazahDetailsEn}</span>
               </div>
 
               <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-1">

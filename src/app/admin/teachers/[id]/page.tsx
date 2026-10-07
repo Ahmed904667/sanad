@@ -1,35 +1,22 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import React, { useState } from 'react';
+import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { useApp } from '@/context/AppContext';
 import { AvatarBadge } from '@/components/AvatarBadge';
 import { ClassCalendar } from '@/components/ClassCalendar';
 import { AuthGuard } from '@/components/AuthGuard';
-import { 
-  GraduationCap, 
-  Users, 
-  Calendar, 
-  Clock, 
-  BookOpen, 
-  CheckCircle2, 
-  Star, 
-  Award, 
-  ArrowRight, 
-  Mail, 
-  Phone, 
-  Video, 
-  ExternalLink,
-  Sparkles,
-  ShieldCheck,
-  Check,
-  Building2
+import {
+  GraduationCap,
+  Users,
+  Calendar,
+  Star,
+  ArrowRight,
 } from 'lucide-react';
 
 function AdminTeacherDetailsContent() {
   const params = useParams();
-  const router = useRouter();
   const teacherId = params.id as string;
 
   const { language, teachers, userAccounts, lessons, reviews, plans } = useApp();
@@ -59,10 +46,8 @@ function AdminTeacherDetailsContent() {
   }
 
   // Teacher-specific lessons
-  const teacherLessons = lessons.filter(l => 
-    l.teacherId === teacher.id || 
-    l.teacherNameAr === teacher.nameAr || 
-    l.teacherNameEn === teacher.nameEn
+  const teacherLessons = lessons.filter(l =>
+    l.teacherId === teacher.id
   );
 
   // Assigned students to this teacher
@@ -72,56 +57,25 @@ function AdminTeacherDetailsContent() {
     if (prof?.assignedTeacherId === teacher.id) return true;
     const hasLesson = lessons.some(l => l.studentId === a.id && l.teacherId === teacher.id);
     if (hasLesson) return true;
-    if (!prof?.assignedTeacherId && teacher.id === 'tech-sulami') return true;
     return false;
   });
 
   // Calculate stats dynamically from state & database records
   const currentMonthStr = new Date().toISOString().slice(0, 7); // e.g. "2026-08"
-  
-  const completedThisMonthCount = teacherLessons.filter(l => 
+
+  const completedThisMonthCount = teacherLessons.filter(l =>
     l.status === 'COMPLETED' && l.date.startsWith(currentMonthStr)
   ).length;
 
   const completedLessonsInState = teacherLessons.filter(l => l.status === 'COMPLETED').length;
-  const completedFromStudentProfiles = assignedStudentAccounts.reduce((sum, acc) => {
-    return sum + (acc.studentProfile?.totalLessonsCompleted || 0);
-  }, 0);
-  const completedAllTimeCount = completedLessonsInState + completedFromStudentProfiles;
-
-  // Pages of Quran read under this teacher's supervision (Calculated dynamically)
-  const totalPagesReadCount = useMemo(() => {
-    let pages = 0;
-    
-    // Add pages from completed lessons in database/state
-    teacherLessons.forEach(l => {
-      if (l.status === 'COMPLETED') {
-        if (l.surahTargetAr && l.surahTargetAr.includes('صفحة')) {
-          const match = l.surahTargetAr.match(/\d+/);
-          if (match) {
-            pages += parseInt(match[0], 10);
-            return;
-          }
-        }
-        pages += Math.round((l.durationMinutes || 30) / 7.5); // ~4 pages per 30 mins
-      }
-    });
-
-    // Add pages from assigned student total hours learned (8 pages per hour)
-    assignedStudentAccounts.forEach(acc => {
-      const hours = acc.studentProfile?.totalHoursLearned || 0;
-      pages += Math.round(hours * 8);
-    });
-
-    return pages;
-  }, [teacherLessons, assignedStudentAccounts]);
+  const completedAllTimeCount = completedLessonsInState;
 
   const teacherReviews = reviews.filter(r => r.teacherId === teacher.id);
 
   return (
-    <div className="py-10 bg-slate-50/80 min-h-screen">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-8">
-        
+    <div className="min-h-screen bg-slate-50 py-6">
+      <div className="mx-auto max-w-7xl space-y-5 px-4 sm:px-6 lg:px-8">
+
         {/* Top Breadcrumb Bar */}
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div className="flex items-center gap-2 text-xs font-semibold text-slate-500">
@@ -145,87 +99,46 @@ function AdminTeacherDetailsContent() {
           </Link>
         </div>
 
-        {/* HERO TEACHER PROFILE CARD (ADMIN VIEW) */}
-        <div className="bg-gradient-to-r from-emerald-950 via-slate-900 to-slate-950 rounded-3xl p-6 sm:p-8 text-white shadow-xl border border-emerald-800/40 space-y-6 relative overflow-hidden">
-          
-          <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6 relative z-10">
-            <div className="flex items-start gap-5">
-              <AvatarBadge nameAr={teacher.nameAr} nameEn={teacher.nameEn} size="xl" />
-
-              <div className="space-y-1.5">
-                <div className="flex items-center gap-2.5 flex-wrap">
-                  <h1 className="text-2xl sm:text-3xl font-black text-white">
-                    {isAr ? teacher.nameAr : teacher.nameEn}
-                  </h1>
-                  <span className="bg-amber-400 text-emerald-950 text-[11px] font-black px-3 py-0.5 rounded-full shadow-2xs">
-                    {teacher.approvalStatus === 'APPROVED' ? (isAr ? 'معلم معتمد' : 'Approved') : (isAr ? 'قيد المراجعة' : 'Pending')}
-                  </span>
-                  <span className="bg-emerald-500/20 text-emerald-300 text-xs font-mono font-bold px-3 py-0.5 rounded-full border border-emerald-500/30">
-                    ID: {teacher.id}
+        <section className="space-y-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+            <div className="flex items-center gap-4">
+              <AvatarBadge nameAr={teacher.nameAr} nameEn={teacher.nameEn} size="lg" />
+              <div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <h1 className="text-xl font-black text-slate-950">{isAr ? teacher.nameAr : teacher.nameEn}</h1>
+                  <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${teacher.approvalStatus === 'APPROVED' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-900'}`}>
+                    {teacher.approvalStatus === 'APPROVED' ? (isAr ? 'معتمد' : 'Approved') : (isAr ? 'قيد المراجعة' : 'Pending review')}
                   </span>
                 </div>
-
-                <p className="text-xs text-amber-300 font-bold">
-                  {isAr ? teacher.titleAr : teacher.titleEn}
-                </p>
-
-                <p className="text-xs text-emerald-200/90 font-medium">
-                  {teacher.email} • {teacher.languagesSpoken.join(' • ')} • {teacher.experienceYears} {isAr ? 'سنوات خبرة' : 'years experience'}
-                </p>
+                <p className="mt-1 text-sm text-slate-600">{isAr ? teacher.titleAr : teacher.titleEn}</p>
+                <p className="mt-1 text-xs text-slate-500">{teacher.experienceYears} {isAr ? 'سنوات خبرة' : 'years experience'} · {teacher.languagesSpoken.join(' · ')}</p>
               </div>
             </div>
-
-            <div className="bg-white/10 backdrop-blur-md p-4 rounded-2xl border border-white/15 text-xs space-y-1 self-stretch md:self-auto min-w-[220px]">
-              <span className="text-emerald-200 font-bold block">{isAr ? 'تفاصيل السند بالإجازة:' : 'Ijazah Chain:'}</span>
-              <p className="text-amber-200 font-serif font-bold text-[11px] leading-relaxed">
-                {isAr ? teacher.ijazahDetailsAr : teacher.ijazahDetailsEn}
-              </p>
+            <div className="space-y-1 text-sm text-slate-600 sm:text-right">
+              <p>{teacher.email || '—'}</p>
+              <p>{teacher.phone || '—'}</p>
             </div>
           </div>
 
-          {/* 5 DETAILED STAT METRICS GRID FOR ADMIN */}
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 pt-5 border-t border-emerald-800/60 relative z-10">
-            
-            {/* 1. Assigned Students */}
-            <div className="bg-white/10 backdrop-blur-md p-4 rounded-2xl border border-white/10 space-y-1">
-              <span className="text-[11px] text-emerald-200 font-bold block">{isAr ? 'الطلاب الموكلون' : 'Assigned Students'}</span>
-              <p className="font-black text-xl text-amber-300">{assignedStudentAccounts.length} {isAr ? 'طالب' : 'students'}</p>
-              <span className="text-[10px] text-emerald-300 font-semibold block">{isAr ? 'تحت الإشراف المباشر' : 'Active roster'}</span>
+          <div className="grid gap-3 border-t border-slate-100 pt-4 md:grid-cols-2">
+            <div>
+              <h2 className="text-sm font-bold text-slate-800">{isAr ? 'الإجازة والسند' : 'Ijazah and chain'}</h2>
+              <p className="mt-1 text-sm leading-6 text-slate-600">{isAr ? teacher.ijazahDetailsAr : teacher.ijazahDetailsEn}</p>
             </div>
-
-            {/* 2. Rating */}
-            <div className="bg-white/10 backdrop-blur-md p-4 rounded-2xl border border-white/10 space-y-1">
-              <span className="text-[11px] text-emerald-200 font-bold block">{isAr ? 'التقييم العام' : 'Teacher Rating'}</span>
-              <div className="flex items-center gap-1">
-                <Star className="w-4 h-4 fill-amber-400 text-amber-400" />
-                <span className="font-black text-xl text-white">{teacher.rating}</span>
-              </div>
-              <span className="text-[10px] text-emerald-300 font-semibold block">({teacher.reviewsCount} {isAr ? 'تقييم طالب' : 'reviews'})</span>
+            <div>
+              <h2 className="text-sm font-bold text-slate-800">{isAr ? 'نبذة وتخصصات' : 'About and specialties'}</h2>
+              <p className="mt-1 text-sm leading-6 text-slate-600">{isAr ? (teacher.bioAr || 'لم تُضف نبذة بعد.') : (teacher.bioEn || teacher.bioAr || 'No biography added yet.')}</p>
+              <p className="mt-1 text-xs text-slate-500">{(isAr ? teacher.specializationsAr : teacher.specializationsEn).join(' · ') || '—'}</p>
             </div>
-
-            {/* 3. Monthly Completed Classes */}
-            <div className="bg-white/10 backdrop-blur-md p-4 rounded-2xl border border-white/10 space-y-1">
-              <span className="text-[11px] text-emerald-200 font-bold block">{isAr ? 'حصص الشهر الحالي' : 'Classes (This Month)'}</span>
-              <p className="font-black text-xl text-white">{completedThisMonthCount} {isAr ? 'حصة مكتملة' : 'completed'}</p>
-              <span className="text-[10px] text-emerald-300 font-semibold block">{isAr ? 'الشهر الحالي' : 'Current month'}</span>
-            </div>
-
-            {/* 4. All-Time Completed Classes */}
-            <div className="bg-white/10 backdrop-blur-md p-4 rounded-2xl border border-white/10 space-y-1">
-              <span className="text-[11px] text-emerald-200 font-bold block">{isAr ? 'إجمالي الحصص كلياً' : 'All-Time Completed'}</span>
-              <p className="font-black text-xl text-white">{completedAllTimeCount} {isAr ? 'حصة' : 'classes'}</p>
-              <span className="text-[10px] text-emerald-300 font-semibold block">{isAr ? 'منذ انضمام المعلم' : 'Since joining'}</span>
-            </div>
-
-            {/* 5. Quran Pages Read by Students */}
-            <div className="bg-white/10 backdrop-blur-md p-4 rounded-2xl border border-white/10 space-y-1 col-span-2 sm:col-span-1">
-              <span className="text-[11px] text-emerald-200 font-bold block">{isAr ? 'صفحات المصحف المقروءة' : 'Pages Recited'}</span>
-              <p className="font-black text-xl text-amber-300">{totalPagesReadCount} {isAr ? 'صفحة' : 'pages'}</p>
-              <span className="text-[10px] text-emerald-300 font-semibold block">{isAr ? 'مُسمّعة ومصححة' : 'Recited & verified'}</span>
-            </div>
-
           </div>
-        </div>
+
+          <div className="grid grid-cols-2 gap-3 border-t border-slate-100 pt-4 lg:grid-cols-4">
+            <div className="rounded-xl bg-slate-50 p-3"><p className="text-xs text-slate-500">{isAr ? 'الطلاب' : 'Students'}</p><p className="mt-1 text-lg font-black text-slate-900">{assignedStudentAccounts.length}</p></div>
+            <div className="rounded-xl bg-slate-50 p-3"><p className="text-xs text-slate-500">{isAr ? 'التقييم' : 'Rating'}</p><p className="mt-1 text-lg font-black text-slate-900">{teacherReviews.length ? teacher.rating : (isAr ? 'لا توجد تقييمات' : 'No reviews')} <span className="text-xs font-medium text-slate-500">({teacherReviews.length})</span></p></div>
+            <div className="rounded-xl bg-slate-50 p-3"><p className="text-xs text-slate-500">{isAr ? 'حصص مكتملة هذا الشهر' : 'Completed this month'}</p><p className="mt-1 text-lg font-black text-slate-900">{completedThisMonthCount}</p></div>
+            <div className="rounded-xl bg-slate-50 p-3"><p className="text-xs text-slate-500">{isAr ? 'إجمالي الحصص المكتملة' : 'Completed all time'}</p><p className="mt-1 text-lg font-black text-slate-900">{completedAllTimeCount}</p></div>
+          </div>
+        </section>
 
         {/* SECTION NAVIGATION TABS */}
         <div className="flex items-center justify-between border-b border-slate-200 pb-0.5 overflow-x-auto gap-2 scrollbar-none">
@@ -234,36 +147,36 @@ function AdminTeacherDetailsContent() {
               onClick={() => setActiveTab('CALENDAR')}
               className={`flex items-center gap-2 px-5 py-3 rounded-t-2xl font-black text-xs transition-all cursor-pointer border-b-2 ${
                 activeTab === 'CALENDAR'
-                  ? 'border-emerald-700 bg-white text-emerald-950 shadow-2xs'
+                  ? 'border-emerald-700 text-emerald-950'
                   : 'border-transparent text-slate-500 hover:text-slate-900'
               }`}
             >
               <Calendar className="w-4 h-4 text-amber-500" />
-              <span>{isAr ? `جدول وتقويم المعلم (${teacherLessons.length})` : `Teacher Calendar (${teacherLessons.length})`}</span>
+              <span>{isAr ? `الحصص (${teacherLessons.length})` : `Classes (${teacherLessons.length})`}</span>
             </button>
 
             <button
               onClick={() => setActiveTab('STUDENTS')}
               className={`flex items-center gap-2 px-5 py-3 rounded-t-2xl font-black text-xs transition-all cursor-pointer border-b-2 ${
                 activeTab === 'STUDENTS'
-                  ? 'border-emerald-700 bg-white text-emerald-950 shadow-2xs'
+                  ? 'border-emerald-700 text-emerald-950'
                   : 'border-transparent text-slate-500 hover:text-slate-900'
               }`}
             >
               <Users className="w-4 h-4 text-emerald-700" />
-              <span>{isAr ? `الطلاب الموكلون للمعلم (${assignedStudentAccounts.length})` : `Assigned Students (${assignedStudentAccounts.length})`}</span>
+              <span>{isAr ? `الطلاب (${assignedStudentAccounts.length})` : `Students (${assignedStudentAccounts.length})`}</span>
             </button>
 
             <button
               onClick={() => setActiveTab('REVIEWS')}
               className={`flex items-center gap-2 px-5 py-3 rounded-t-2xl font-black text-xs transition-all cursor-pointer border-b-2 ${
                 activeTab === 'REVIEWS'
-                  ? 'border-emerald-700 bg-white text-emerald-950 shadow-2xs'
+                  ? 'border-emerald-700 text-emerald-950'
                   : 'border-transparent text-slate-500 hover:text-slate-900'
               }`}
             >
               <Star className="w-4 h-4 text-amber-500" />
-              <span>{isAr ? `التقييمات والملاحظات (${teacherReviews.length})` : `Reviews (${teacherReviews.length})`}</span>
+              <span>{isAr ? `التقييمات (${teacherReviews.length})` : `Reviews (${teacherReviews.length})`}</span>
             </button>
           </div>
         </div>
@@ -320,7 +233,7 @@ function AdminTeacherDetailsContent() {
                     email: acc.email,
                     phone: acc.phone,
                     activePlanId: 'plan-standard',
-                    remainingLessons: 8,
+                    remainingLessons: 16,
                     verificationStatus: 'VERIFIED' as const,
                     quranGoal: { targetSurahOrJuzAr: 'سورة البقرة والجزء الثلاثون' }
                   };
@@ -415,7 +328,7 @@ function AdminTeacherDetailsContent() {
                         <span>{rev.rating}</span>
                       </div>
                     </div>
-                    <p className="text-slate-700 italic">"{isAr ? rev.commentAr : rev.commentEn}"</p>
+                    <p className="text-slate-700 italic">&ldquo;{isAr ? rev.commentAr : rev.commentEn}&rdquo;</p>
                     <span className="text-[10px] text-slate-400 block">{rev.date}</span>
                   </div>
                 ))}

@@ -39,3 +39,9 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Local audit output
+.next-audit/
+
+# Keep the checked-in example available while ignoring real env files
+!.env.example

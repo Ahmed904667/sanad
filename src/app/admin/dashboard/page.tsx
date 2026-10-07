@@ -1,62 +1,45 @@
 'use client';
 
+import { AccessibleModal } from '@/components/AccessibleModal';
+
 import React, { useState } from 'react';
 import Link from 'next/link';
+import { localizeQuranScope } from '@/utils/localization';
 import { useApp } from '@/context/AppContext';
 import { AvatarBadge } from '@/components/AvatarBadge';
 import { ClassCalendar } from '@/components/ClassCalendar';
 import { AuthGuard } from '@/components/AuthGuard';
-import { UserAccount, Role } from '@/types';
-import { 
-  ShieldCheck, 
-  Users, 
-  GraduationCap, 
-  Building2, 
-  CheckCircle2, 
-  XCircle, 
-  Award, 
-  Search, 
-  Star, 
-  FileText,
-  DollarSign,
-  Calendar,
+import { UserAccount, Role, StudentProfile } from '@/types';
+import {
+  Building2,
+  CheckCircle2,
+  XCircle,
+  Search,
   UserPlus,
-  Ban,
-  Unlock,
-  Video,
-  ExternalLink,
-  Plus,
   X,
-  Filter,
   Eye,
-  Check,
-  Clock,
-  Sparkles,
-  Lock,
   AlertTriangle
 } from 'lucide-react';
 
 function AdminDashboardContent() {
-  const { 
-    language, 
-    currentUser, 
-    teachers, 
-    student, 
+  const {
+    language,
+    teachers,
+    student,
     userAccounts,
     plans,
     lessons,
-    approveTeacherByAdmin, 
+    approveTeacherByAdmin,
     rejectTeacherByAdmin,
     approveStudentPayment,
     rejectStudentPayment,
     toggleBlockAccount,
     createAccountByAdmin,
-    updateMeetUrl
   } = useApp();
   const isAr = language === 'ar';
 
   const [mainTab, setMainTab] = useState<'CALENDAR' | 'ACCOUNTS' | 'RECEIPTS' | 'TEACHERS'>('RECEIPTS');
-  
+
   // Account Management States
   const [accountRoleFilter, setAccountRoleFilter] = useState<'ALL' | 'STUDENT' | 'TEACHER' | 'ADMIN'>('ALL');
   const [accountSearchQuery, setAccountSearchQuery] = useState('');
@@ -69,6 +52,15 @@ function AdminDashboardContent() {
   const [newAccRole, setNewAccRole] = useState<Role>('STUDENT');
   const [newAccGender, setNewAccGender] = useState<'MALE' | 'FEMALE'>('MALE');
   const [newAccPhone, setNewAccPhone] = useState('');
+  const [creatingAccount, setCreatingAccount] = useState(false);
+  const [createError, setCreateError] = useState('');
+  const [actionError, setActionError] = useState('');
+  const [busyAction, setBusyAction] = useState<string | null>(null);
+  const runAction = async (key: string, action: () => Promise<void>) => {
+    if (busyAction) return;
+    setBusyAction(key); setActionError('');
+    try { await action(); } catch (error) { setActionError(error instanceof Error ? error.message : (isAr ? 'تعذر حفظ الإجراء.' : 'Unable to save action.')); } finally { setBusyAction(null); }
+  };
   const [createSuccessMsg, setCreateSuccessMsg] = useState('');
 
   // All Classes Search / Filter State
@@ -80,6 +72,7 @@ function AdminDashboardContent() {
   const [selectedRejectionReason, setSelectedRejectionReason] = useState<string>('إيصال التحويل البنكي غير واضح أو الصورة تالفة');
   const [customRejectionReason, setCustomRejectionReason] = useState<string>('');
 
+  const rejectionReasonsEn = ['Bank receipt is unreadable or damaged', 'Amount does not match the selected plan', 'Receipt was already used', 'Sender details do not match the student', 'Other (write a reason)'];
   const PRESET_REJECTION_REASONS = [
     'إيصال التحويل البنكي غير واضح أو الصورة تالفة',
     'المبلغ المحول غير مطابق لسعر الباقة المختارة',
@@ -89,42 +82,30 @@ function AdminDashboardContent() {
   ];
 
   const pendingTeachers = teachers.filter(t => t.approvalStatus === 'PENDING_ADMIN');
-  const approvedTeachers = teachers.filter(t => t.approvalStatus === 'APPROVED');
   const studentAccounts = userAccounts.filter(a => a.role === 'STUDENT');
   const teacherAccounts = userAccounts.filter(a => a.role === 'TEACHER');
   const adminAccounts = userAccounts.filter(a => a.role === 'ADMIN');
-  const totalStudentsCount = Math.max(studentAccounts.length, 1);
 
-  // Pending student payments/receipts & onboarding applications
+  // Both account shortcuts and the queue use the same explicit request state.
+  const isPendingPaymentRequest = (profile?: StudentProfile) => {
+    if (!profile?.paymentReceiptUrl || !(profile.pendingPlanId || profile.activePlanId)) return false;
+    if (profile.paymentRequestStatus) return profile.paymentRequestStatus === 'PENDING';
+    // Keep genuine legacy receipt submissions reviewable, without queuing empty onboarding.
+    return profile.verificationStatus === 'PENDING_VERIFICATION' || Boolean(profile.pendingPlanId) || profile.subscriptionChangeType === 'NEW';
+  };
   const pendingStudentsList = userAccounts
-    .filter(a => a.role === 'STUDENT' && (
-      a.studentProfile?.verificationStatus === 'PENDING_VERIFICATION' || 
-      Boolean(a.studentProfile?.pendingPlanId) ||
-      a.studentProfile?.subscriptionChangeType === 'NEW'
-    ))
-    .map(a => a.studentProfile!)
-    .concat(
-      (student.verificationStatus === 'PENDING_VERIFICATION' || Boolean(student.pendingPlanId) || student.subscriptionChangeType === 'NEW') && 
-      !userAccounts.some(a => a.id === student.id && (a.studentProfile?.verificationStatus === 'PENDING_VERIFICATION' || Boolean(a.studentProfile?.pendingPlanId)))
-        ? [student]
-        : []
-    );
+    .filter(account => account.role === 'STUDENT' && isPendingPaymentRequest(account.studentProfile))
+    .map(account => account.studentProfile!)
+    .concat(isPendingPaymentRequest(student) && !userAccounts.some(account => account.id === student.id) ? [student] : []);
 
   const pendingStudentsCount = pendingStudentsList.length;
-
-  // Dynamic revenue calculation from active student plans
-  const totalRevenueSar = studentAccounts.reduce((sum, acc) => {
-    const planId = acc.studentProfile?.activePlanId || acc.studentProfile?.pendingPlanId || 'plan-standard';
-    const plan = plans.find(p => p.id === planId) || plans[1];
-    return sum + (plan.priceMonthlySar || 240);
-  }, 0);
 
   // Filtered Accounts
   const filteredAccounts = userAccounts.filter(acc => {
     if (accountRoleFilter !== 'ALL' && acc.role !== accountRoleFilter) return false;
     if (accountSearchQuery.trim()) {
       const q = accountSearchQuery.toLowerCase();
-      return acc.name.toLowerCase().includes(q) || acc.email.toLowerCase().includes(q) || acc.id.toLowerCase().includes(q);
+      return (acc.name || acc.email || '').toLowerCase().includes(q) || (acc.email || '').toLowerCase().includes(q) || acc.id.toLowerCase().includes(q);
     }
     return true;
   });
@@ -134,17 +115,21 @@ function AdminDashboardContent() {
     if (selectedTeacherFilter !== 'ALL' && l.teacherId !== selectedTeacherFilter) return false;
     if (classSearchQuery.trim()) {
       const q = classSearchQuery.toLowerCase();
-      return l.studentNameAr.toLowerCase().includes(q) || 
-             l.teacherNameAr.toLowerCase().includes(q) || 
+      return l.studentNameAr.toLowerCase().includes(q) ||
+             l.teacherNameAr.toLowerCase().includes(q) ||
              l.date.includes(q) ||
              (l.surahTargetAr && l.surahTargetAr.toLowerCase().includes(q));
     }
     return true;
   });
 
-  const handleCreateAccountSubmit = (e: React.FormEvent) => {
+  const handleCreateAccountSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newAccName.trim() || !newAccEmail.trim()) return;
+    if (newAccPassword.trim().length < 8) {
+      setCreateError(isAr ? 'يجب أن تتكون كلمة المرور من 8 أحرف على الأقل.' : 'Password must be at least 8 characters.');
+      return;
+    }
 
     const newId = newAccRole === 'STUDENT' ? `std-${Math.floor(1000 + Math.random() * 9000)}`
                 : newAccRole === 'TEACHER' ? `tech-${Math.floor(1000 + Math.random() * 9000)}`
@@ -154,7 +139,6 @@ function AdminDashboardContent() {
       id: newId,
       name: newAccName.trim(),
       email: newAccEmail.trim().toLowerCase(),
-      password: newAccPassword.trim() || '123456',
       role: newAccRole,
       gender: newAccGender,
       phone: newAccPhone,
@@ -166,222 +150,140 @@ function AdminDashboardContent() {
         email: newAccEmail.trim().toLowerCase(),
         phone: newAccPhone,
         gender: newAccGender,
-        verificationStatus: 'VERIFIED',
-        activePlanId: 'plan-standard',
-        remainingLessons: 8,
+        // Creating an account does not imply payment or subscription approval.
+        verificationStatus: 'PENDING_VERIFICATION',
+        activePlanId: null,
+        remainingLessons: 0,
         totalLessonsCompleted: 0,
         totalHoursLearned: 0.0,
-        assignedTeacherId: 'tech-sulami',
-        quranGoal: {
-          track: 'COMBINED',
-          targetSurahOrJuzAr: 'الحفظ: سورة البقرة | التلاوة: سورة يس',
-          targetSurahOrJuzEn: 'Hifz: Surah Al-Baqarah | Tilawah: Surah Ya-Sin',
-          orientationCompleted: true,
-          agreedWeeklyDaysAr: ['الإثنين', 'الأربعاء'],
-          agreedWeeklyDaysEn: ['Monday', 'Wednesday'],
-          agreedTimeSlot: '12:00'
-        }
+        assignedTeacherId: null,
+        quranGoal: undefined
       } : undefined
     };
 
-    createAccountByAdmin(newAccObj);
-    setCreateSuccessMsg(isAr ? 'تم إنشاء الحساب بنجاح!' : 'Account created successfully!');
-    setTimeout(() => {
-      setCreateSuccessMsg('');
-      setIsCreateAccountModalOpen(false);
-      setNewAccName('');
-      setNewAccEmail('');
-    }, 1500);
+    if (creatingAccount) return;
+    setCreatingAccount(true); setCreateError(''); setCreateSuccessMsg('');
+    try {
+      await createAccountByAdmin(newAccObj, newAccPassword.trim());
+      setCreateSuccessMsg(isAr ? 'تم إنشاء الحساب بنجاح!' : 'Account created successfully!');
+      setTimeout(() => {
+        setCreateSuccessMsg('');
+        setIsCreateAccountModalOpen(false);
+        setNewAccName('');
+        setNewAccEmail('');
+        setNewAccPassword('');
+      }, 1500);
+    } catch (error) {
+      setCreateError(error instanceof Error ? error.message : (isAr ? 'تعذر إنشاء الحساب.' : 'Unable to create account.'));
+    } finally { setCreatingAccount(false); }
   };
 
   return (
-    <div className="py-10 bg-slate-50 min-h-screen">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-8">
-        
-        {/* Admin Banner */}
-        <div className="bg-gradient-to-r from-emerald-950 via-slate-900 to-slate-950 rounded-3xl p-6 sm:p-8 text-white shadow-xl flex flex-col md:flex-row items-center justify-between gap-6 border border-emerald-800/40">
-          <div className="flex items-center gap-4">
-            <div className="w-16 h-16 rounded-2xl gold-gradient-bg flex items-center justify-center text-emerald-950 shadow-md shrink-0">
-              <ShieldCheck className="w-9 h-9 stroke-[2.5]" />
-            </div>
-            <div className="space-y-1">
-              <div className="inline-flex items-center gap-2 bg-amber-500/20 text-amber-300 px-3 py-0.5 rounded-full text-xs font-bold">
-                <Award className="w-3.5 h-3.5" />
-                <span>{isAr ? 'مركز التحكم الشامل بالمنصة (Super Admin)' : 'Super Admin Control Center'}</span>
-              </div>
-              <h1 className="text-2xl sm:text-3xl font-black">
-                {isAr ? 'مرحباً، مدير منصة سَنَد' : 'Platform Control Center'}
-              </h1>
-              <p className="text-emerald-200/80 text-xs sm:text-sm font-medium">
-                {isAr ? 'إدارة جميع الحصص، الحسابات (حظر/إنشاء)، واعتماد الاشتراكات للمعلمين والطلاب.' : 'Full access to all system classes, user accounts, and subscription approvals.'}
-              </p>
-            </div>
-          </div>
+    <div className="min-h-screen bg-slate-50 py-6">
+      {actionError && <p role="alert" className="mx-auto max-w-7xl p-4 text-rose-700">{actionError}</p>}
+      {busyAction && <p role="status" className="mx-auto max-w-7xl p-2 text-emerald-800">{isAr ? "جارٍ حفظ الإجراء..." : "Saving action…"}</p>}
+      <div className="mx-auto max-w-7xl space-y-5 px-4 sm:px-6 lg:px-8">
 
-          <div className="flex flex-wrap items-center gap-2.5">
-            <button
-              onClick={() => setIsCreateAccountModalOpen(true)}
-              className="px-5 py-3 rounded-2xl gold-gradient-bg text-emerald-950 font-black text-xs shadow-lg hover:brightness-110 transition-all flex items-center gap-2 cursor-pointer shrink-0"
-            >
-              <UserPlus className="w-4 h-4 stroke-[2.5]" />
-              <span>{isAr ? '+ إنشاء حساب جديد' : '+ Create User Account'}</span>
-            </button>
+        <header className="flex flex-col gap-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="text-xs font-bold text-emerald-700">{isAr ? 'إدارة المنصة' : 'Platform admin'}</p>
+            <h1 className="mt-1 text-2xl font-black text-slate-950">{isAr ? 'لوحة الإدارة' : 'Admin dashboard'}</h1>
+            <p className="mt-1 text-sm text-slate-500">{isAr ? 'إدارة الاشتراكات والمعلمين والحسابات والحصص.' : 'Manage subscriptions, teachers, accounts, and classes.'}</p>
           </div>
-        </div>
+          <button
+            onClick={() => { setCreateError(''); setCreateSuccessMsg(''); setIsCreateAccountModalOpen(true); }}
+            className="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-900 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-emerald-800"
+          >
+            <UserPlus className="h-4 w-4" />
+            <span>{isAr ? 'إنشاء حساب' : 'Create account'}</span>
+          </button>
+        </header>
 
         {/* PENDING APPLICATIONS ALERT BANNER */}
         {pendingStudentsCount > 0 && (
-          <div className="bg-amber-500/10 border-2 border-amber-500/30 rounded-3xl p-4 sm:p-5 flex flex-col sm:flex-row items-center justify-between gap-4 text-amber-900 shadow-xs">
+          <div className="flex flex-col gap-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-amber-950 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-2xl bg-amber-500 text-slate-950 flex items-center justify-center font-black shrink-0 animate-pulse">
-                <AlertTriangle className="w-5 h-5 stroke-[2.5]" />
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-amber-100 text-amber-800">
+                <AlertTriangle className="h-4 w-4" />
               </div>
               <div className="space-y-0.5">
-                <h4 className="font-extrabold text-sm text-amber-950">
-                  {isAr ? `تنبيه: يوجد ${pendingStudentsCount} طلب اشتراك جديد في انتظار الاعتماد!` : `${pendingStudentsCount} New Subscription Requests Awaiting Approval!`}
+                <h4 className="text-sm font-bold text-amber-950">
+                  {isAr ? `${pendingStudentsCount} طلب اشتراك بانتظار المراجعة` : `${pendingStudentsCount} subscription requests need review`}
                 </h4>
-                <p className="text-xs text-amber-800/90 font-medium">
-                  {isAr ? 'قام الطلاب بالتسجيل ورفع إيصال التحويل، في انتظار اعتماد الإدارة لتفعيل الخطة والجداول.' : 'Students have signed up & uploaded receipts. Verification is required to activate classes.'}
+                <p className="text-xs text-amber-800">
+                  {isAr ? 'راجع الإيصال لتفعيل الخطة.' : 'Review the receipt to activate the plan.'}
                 </p>
               </div>
             </div>
             <button
               onClick={() => setMainTab('RECEIPTS')}
-              className="px-5 py-2.5 rounded-xl gold-gradient-bg text-emerald-950 text-xs font-black shrink-0 hover:brightness-110 transition-all shadow-md flex items-center gap-1.5 cursor-pointer self-stretch sm:self-auto justify-center"
+              className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-amber-200 px-3 py-2 text-xs font-bold text-amber-950 transition hover:bg-amber-300"
             >
               <Building2 className="w-4 h-4" />
-              <span>{isAr ? 'مراجعة الطلبات والاعتماد ↗' : 'Review Applications ↗'}</span>
+              <span>{isAr ? 'مراجعة الطلبات' : 'Review requests'}</span>
             </button>
           </div>
         )}
 
-        {/* SYSTEM KPI CARDS */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-          <div className="bg-white rounded-3xl p-6 border border-slate-200 shadow-xs flex items-center justify-between">
-            <div>
-              <span className="text-xs font-bold text-slate-500 block mb-1">{isAr ? 'إجمالي حصص النظام:' : 'Total System Classes:'}</span>
-              <span className="text-3xl font-black text-emerald-950">{lessons.length}</span>
+        <section className="grid grid-cols-2 gap-3 lg:grid-cols-4" aria-label={isAr ? 'ملخص الإدارة' : 'Admin summary'}>
+          {[
+            { label: isAr ? 'الحصص' : 'Classes', value: lessons.length },
+            { label: isAr ? 'الطلاب' : 'Students', value: studentAccounts.length },
+            { label: isAr ? 'المعلمون' : 'Teachers', value: teacherAccounts.length },
+            { label: isAr ? 'طلبات تحتاج مراجعة' : 'Needs review', value: pendingStudentsCount + pendingTeachers.length },
+          ].map(item => (
+            <div key={item.label} className="rounded-xl border border-slate-200 bg-white p-4">
+              <p className="text-xs font-medium text-slate-500">{item.label}</p>
+              <p className="mt-1 text-2xl font-bold text-slate-950">{item.value}</p>
             </div>
-            <div className="w-12 h-12 rounded-2xl bg-emerald-950 text-amber-400 flex items-center justify-center font-black">
-              <Calendar className="w-6 h-6" />
-            </div>
-          </div>
+          ))}
+        </section>
 
-          <div className="bg-white rounded-3xl p-6 border border-slate-200 shadow-xs flex items-center justify-between">
-            <div>
-              <span className="text-xs font-bold text-slate-500 block mb-1">{isAr ? 'إجمالي حسابات الأعضاء:' : 'Total User Accounts:'}</span>
-              <span className="text-3xl font-black text-slate-900">{userAccounts.length}</span>
-              <span className="text-[10px] text-slate-500 font-semibold block">{studentAccounts.length} طالب • {teacherAccounts.length} معلم</span>
-            </div>
-            <div className="w-12 h-12 rounded-2xl bg-slate-900 text-amber-300 flex items-center justify-center">
-              <Users className="w-6 h-6" />
-            </div>
-          </div>
-
-          <div className="bg-white rounded-3xl p-6 border border-slate-200 shadow-xs flex items-center justify-between">
-            <div>
-              <span className="text-xs font-bold text-slate-500 block mb-1">{isAr ? 'طلبات الاشتراكات المعلقة:' : 'Pending Approvals:'}</span>
-              <span className="text-3xl font-black text-amber-600">{pendingStudentsCount + pendingTeachers.length}</span>
-            </div>
-            <div className="w-12 h-12 rounded-2xl bg-amber-100 text-amber-800 flex items-center justify-center">
-              <Building2 className="w-6 h-6" />
-            </div>
-          </div>
-
-          <div className="bg-white rounded-3xl p-6 border border-slate-200 shadow-xs flex items-center justify-between">
-            <div>
-              <span className="text-xs font-bold text-slate-500 block mb-1">{isAr ? 'إيرادات الاشتراكات (SAR):' : 'Total Revenue (SAR):'}</span>
-              <span className="text-3xl font-black text-emerald-800">{totalRevenueSar} ر.س</span>
-            </div>
-            <div className="w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-700 flex items-center justify-center">
-              <DollarSign className="w-6 h-6" />
-            </div>
-          </div>
-        </div>
-
-        {/* PRIMARY TAB NAVIGATION */}
-        <div className="flex items-center gap-2 border-b border-slate-200 pb-2 overflow-x-auto scrollbar-none">
-          <button
-            onClick={() => setMainTab('CALENDAR')}
-            className={`px-5 py-3 rounded-2xl text-xs font-black transition-all flex items-center gap-2 cursor-pointer ${
-              mainTab === 'CALENDAR'
-                ? 'bg-emerald-950 text-amber-400 shadow-md ring-2 ring-emerald-800'
-                : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
-            }`}
-          >
-            <Calendar className="w-4 h-4 text-amber-400" />
-            <span>{isAr ? `تقويم وجدول جميع حصص النظام (${lessons.length})` : `All Classes Calendar (${lessons.length})`}</span>
-          </button>
-
-          <button
-            onClick={() => setMainTab('ACCOUNTS')}
-            className={`px-5 py-3 rounded-2xl text-xs font-black transition-all flex items-center gap-2 cursor-pointer ${
-              mainTab === 'ACCOUNTS'
-                ? 'bg-emerald-950 text-amber-400 shadow-md ring-2 ring-emerald-800'
-                : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
-            }`}
-          >
-            <Users className="w-4 h-4 text-amber-400" />
-            <span>{isAr ? `إدارة كافة الحسابات والتعطيل (${userAccounts.length})` : `Manage Accounts (${userAccounts.length})`}</span>
-          </button>
-
-          <button
-            onClick={() => setMainTab('RECEIPTS')}
-            className={`px-5 py-3 rounded-2xl text-xs font-black transition-all flex items-center gap-2 cursor-pointer ${
-              mainTab === 'RECEIPTS'
-                ? 'gold-gradient-bg text-emerald-950 shadow-md ring-2 ring-amber-300'
-                : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
-            }`}
-          >
-            <Building2 className="w-4 h-4" />
-            <span>{isAr ? 'اعتماد إيصالات الطلاب' : 'Subscription Receipts'}</span>
-            {pendingStudentsCount > 0 && (
-              <span className="bg-emerald-950 text-amber-300 px-2 py-0.5 rounded-full text-[10px] font-black">
-                {pendingStudentsCount}
-              </span>
-            )}
-          </button>
-
-          <button
-            onClick={() => setMainTab('TEACHERS')}
-            className={`px-5 py-3 rounded-2xl text-xs font-black transition-all flex items-center gap-2 cursor-pointer ${
-              mainTab === 'TEACHERS'
-                ? 'emerald-gradient-bg text-white shadow-md ring-2 ring-emerald-300'
-                : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
-            }`}
-          >
-            <GraduationCap className="w-4 h-4" />
-            <span>{isAr ? 'اعتماد المعلمين' : 'Teacher Approvals'}</span>
-            {pendingTeachers.length > 0 && (
-              <span className="bg-amber-400 text-emerald-950 px-2 py-0.5 rounded-full text-[10px] font-black">
-                {pendingTeachers.length}
-              </span>
-            )}
-          </button>
-        </div>
+        <div className="grid items-start gap-4 lg:grid-cols-[210px_minmax(0,1fr)]">
+          <nav aria-label={isAr ? 'أقسام الإدارة' : 'Admin sections'} className="grid grid-cols-2 gap-1 rounded-xl border border-slate-200 bg-white p-2 lg:sticky lg:top-24 lg:grid-cols-1">
+            {([
+              { id: 'RECEIPTS', label: isAr ? 'طلبات الاشتراك' : 'Subscriptions', count: pendingStudentsCount },
+              { id: 'TEACHERS', label: isAr ? 'مراجعة المعلمين' : 'Teacher review', count: pendingTeachers.length },
+              { id: 'ACCOUNTS', label: isAr ? 'الحسابات' : 'Accounts', count: userAccounts.length },
+              { id: 'CALENDAR', label: isAr ? 'الحصص' : 'Classes', count: lessons.length },
+            ] as const).map(item => (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => setMainTab(item.id)}
+                aria-current={mainTab === item.id ? 'page' : undefined}
+                className={`flex min-h-10 items-center justify-between gap-2 rounded-lg px-3 py-2 text-left text-sm font-semibold transition ${mainTab === item.id ? 'bg-emerald-900 text-white' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-950'}`}
+              >
+                <span>{item.label}</span>
+                <span className={`text-xs ${mainTab === item.id ? 'text-emerald-100' : 'text-slate-400'}`}>{item.count}</span>
+              </button>
+            ))}
+          </nav>
+          <main className="min-w-0 space-y-4">
 
         {/* TAB 1: SYSTEM ALL CLASSES CALENDAR & TIMETABLE (FULL ADMIN ACCESS) */}
         {mainTab === 'CALENDAR' && (
-          <div className="space-y-6 animate-in fade-in">
-            
+          <section className="space-y-4 animate-in fade-in">
+
             {/* Search & Teacher Filter Bar */}
-            <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-xs flex flex-col sm:flex-row items-center justify-between gap-4">
-              <div className="flex items-center gap-3 w-full sm:w-auto">
+            <div className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-white p-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
                 <div className="relative flex-1 sm:w-72">
-                  <Search className="w-4 h-4 text-slate-400 absolute right-3.5 top-3" />
+                  <Search className={`absolute top-3 h-4 w-4 text-slate-400 ${isAr ? 'right-3' : 'left-3'}`} />
                   <input
                     type="text"
+                    dir={isAr ? 'rtl' : 'ltr'}
                     value={classSearchQuery}
                     onChange={(e) => setClassSearchQuery(e.target.value)}
                     placeholder={isAr ? 'بحث باسم الطالب أو المعلم أو السورة...' : 'Search student, teacher, or surah...'}
-                    className="w-full pl-4 pr-10 py-2.5 text-xs bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:border-emerald-600"
+                    className={`w-full rounded-lg border border-slate-200 bg-white py-2.5 text-sm focus:border-emerald-700 focus:outline-none ${isAr ? 'pl-3 pr-9' : 'pl-9 pr-3'}`}
                   />
                 </div>
 
                 <select
                   value={selectedTeacherFilter}
                   onChange={(e) => setSelectedTeacherFilter(e.target.value)}
-                  className="px-3.5 py-2.5 text-xs bg-slate-50 border border-slate-200 rounded-2xl text-slate-800 font-bold focus:outline-none cursor-pointer"
+                  className="rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-700 focus:border-emerald-700 focus:outline-none"
                 >
                   <option value="ALL">{isAr ? 'جميع المعلمين' : 'All Teachers'}</option>
                   {teachers.map(t => (
@@ -390,328 +292,186 @@ function AdminDashboardContent() {
                 </select>
               </div>
 
-              <div className="text-xs text-slate-500 font-bold">
+              <div className="text-sm text-slate-500">
                 {isAr ? `يعرض ${filteredSystemLessons.length} حصة من أصل ${lessons.length}` : `Showing ${filteredSystemLessons.length} of ${lessons.length} classes`}
               </div>
             </div>
 
             {/* Interactive System Calendar */}
             <ClassCalendar lessons={filteredSystemLessons} userRole="ADMIN" />
-          </div>
+          </section>
         )}
 
         {/* TAB 2: MANAGE ACCOUNTS (CREATE & BLOCK USER ACCOUNTS) */}
         {mainTab === 'ACCOUNTS' && (
-          <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200 shadow-sm space-y-6 animate-in fade-in">
-            
-            {/* Header & Controls */}
-            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-slate-100 pb-4">
-              <div className="space-y-0.5">
-                <h3 className="font-black text-lg text-slate-900">
-                  {isAr ? 'سجل حسابات منصة سَنَد والتحكم في الوصول' : 'User Accounts Directory & Access Control'}
-                </h3>
-                <p className="text-xs text-slate-500 font-semibold">
-                  {isAr ? 'إمكانية حظر أو إلغاء حظر الحسابات، وإنشاء حسابات جديدة مباشرة' : 'Block or unblock user accounts and create new accounts'}
-                </p>
+          <section className="space-y-4 rounded-xl border border-slate-200 bg-white p-4 sm:p-5">
+            <header className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h2 className="text-lg font-bold text-slate-950">{isAr ? 'الحسابات' : 'Accounts'}</h2>
+                <p className="mt-1 text-sm text-slate-500">{isAr ? 'ابحث عن حساب أو غيّر حالته.' : 'Find an account or change its status.'}</p>
               </div>
-
-              <button
-                onClick={() => setIsCreateAccountModalOpen(true)}
-                className="px-4 py-2.5 rounded-xl gold-gradient-bg text-emerald-950 font-black text-xs shadow-xs hover:brightness-105 transition-all flex items-center gap-1.5 cursor-pointer"
-              >
-                <UserPlus className="w-4 h-4" />
-                <span>{isAr ? '+ إضافة حساب جديد' : '+ Add Account'}</span>
+              <button onClick={() => { setCreateError(''); setCreateSuccessMsg(''); setIsCreateAccountModalOpen(true); }} className="inline-flex items-center justify-center gap-2 rounded-lg bg-emerald-900 px-3 py-2 text-sm font-semibold text-white hover:bg-emerald-800">
+                <UserPlus className="h-4 w-4" />{isAr ? 'إنشاء حساب' : 'Create account'}
               </button>
-            </div>
+            </header>
 
-            {/* Role Filter & Search Bar */}
-            <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
-              <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-2xl w-full sm:w-auto">
-                <button
-                  onClick={() => setAccountRoleFilter('ALL')}
-                  className={`px-4 py-1.5 rounded-xl text-xs font-extrabold transition-all cursor-pointer ${
-                    accountRoleFilter === 'ALL' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-600'
-                  }`}
-                >
-                  {isAr ? `الكل (${userAccounts.length})` : `All (${userAccounts.length})`}
-                </button>
-                <button
-                  onClick={() => setAccountRoleFilter('STUDENT')}
-                  className={`px-4 py-1.5 rounded-xl text-xs font-extrabold transition-all cursor-pointer ${
-                    accountRoleFilter === 'STUDENT' ? 'bg-emerald-800 text-white shadow-xs' : 'text-slate-600'
-                  }`}
-                >
-                  {isAr ? `الطلاب (${studentAccounts.length})` : `Students (${studentAccounts.length})`}
-                </button>
-                <button
-                  onClick={() => setAccountRoleFilter('TEACHER')}
-                  className={`px-4 py-1.5 rounded-xl text-xs font-extrabold transition-all cursor-pointer ${
-                    accountRoleFilter === 'TEACHER' ? 'bg-amber-500 text-emerald-950 shadow-xs' : 'text-slate-600'
-                  }`}
-                >
-                  {isAr ? `المعلمون (${teacherAccounts.length})` : `Teachers (${teacherAccounts.length})`}
-                </button>
-                <button
-                  onClick={() => setAccountRoleFilter('ADMIN')}
-                  className={`px-4 py-1.5 rounded-xl text-xs font-extrabold transition-all cursor-pointer ${
-                    accountRoleFilter === 'ADMIN' ? 'bg-slate-900 text-white shadow-xs' : 'text-slate-600'
-                  }`}
-                >
-                  {isAr ? `الإدارة (${adminAccounts.length})` : `Admins (${adminAccounts.length})`}
-                </button>
-              </div>
-
-              <div className="relative w-full sm:w-64">
-                <Search className="w-4 h-4 text-slate-400 absolute right-3.5 top-3" />
+            <div className="grid gap-2 sm:grid-cols-[180px_minmax(0,1fr)]">
+              <select
+                value={accountRoleFilter}
+                onChange={event => setAccountRoleFilter(event.target.value as 'ALL' | 'STUDENT' | 'TEACHER' | 'ADMIN')}
+                aria-label={isAr ? 'تصفية حسب نوع الحساب' : 'Filter by account role'}
+                className="rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-700 focus:border-emerald-700 focus:outline-none"
+              >
+                <option value="ALL">{isAr ? `كل الحسابات (${userAccounts.length})` : `All accounts (${userAccounts.length})`}</option>
+                <option value="STUDENT">{isAr ? `الطلاب (${studentAccounts.length})` : `Students (${studentAccounts.length})`}</option>
+                <option value="TEACHER">{isAr ? `المعلمون (${teacherAccounts.length})` : `Teachers (${teacherAccounts.length})`}</option>
+                <option value="ADMIN">{isAr ? `الإدارة (${adminAccounts.length})` : `Admins (${adminAccounts.length})`}</option>
+              </select>
+              <div className="relative">
+                <Search className={`absolute top-3 h-4 w-4 text-slate-400 ${isAr ? 'right-3' : 'left-3'}`} />
                 <input
-                  type="text"
+                  type="search"
+                  dir={isAr ? 'rtl' : 'ltr'}
                   value={accountSearchQuery}
-                  onChange={(e) => setAccountSearchQuery(e.target.value)}
-                  placeholder={isAr ? 'بحث بالاسم أو البريد الإلكتروني...' : 'Search by name or email...'}
-                  className="w-full pl-4 pr-10 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-emerald-600"
+                  onChange={event => setAccountSearchQuery(event.target.value)}
+                  placeholder={isAr ? 'ابحث بالاسم أو البريد' : 'Search name or email'}
+                  className={`w-full rounded-lg border border-slate-200 bg-white py-2.5 text-sm focus:border-emerald-700 focus:outline-none ${isAr ? 'pl-3 pr-9' : 'pl-9 pr-3'}`}
                 />
               </div>
             </div>
 
-            {/* Accounts Table / Cards Grid */}
-            {filteredAccounts.length > 0 ? (
-              <div className="space-y-3">
-                {filteredAccounts.map((acc) => {
-                  const isBlocked = acc.isBlocked || acc.studentProfile?.verificationStatus === 'PAUSED' || acc.studentProfile?.verificationStatus === 'CANCELLED';
-
+            {filteredAccounts.length ? (
+              <ul className="divide-y divide-slate-100 rounded-lg border border-slate-200">
+                {filteredAccounts.map(acc => {
+                  const isBlocked = Boolean(acc.isBlocked);
+                  const roleLabel = acc.role === 'ADMIN' ? (isAr ? 'مدير' : 'Admin') : acc.role === 'TEACHER' ? (isAr ? 'معلم' : 'Teacher') : (isAr ? 'طالب' : 'Student');
                   return (
-                    <div
-                      key={acc.id}
-                      className={`p-4 rounded-2xl border transition-all flex flex-col md:flex-row items-start md:items-center justify-between gap-4 ${
-                        isBlocked
-                          ? 'bg-red-50/70 border-red-200'
-                          : 'bg-white border-slate-200 shadow-2xs hover:shadow-xs'
-                      }`}
-                    >
-                      <div className="flex items-center gap-4">
-                        <AvatarBadge nameAr={acc.name} nameEn={acc.name} size="md" />
-                        <div className="space-y-1 text-xs">
-                          <div className="flex items-center gap-2">
-                            <h4 className="font-extrabold text-slate-900 text-sm">
-                              {acc.name}
-                            </h4>
-                            <span className={`px-2.5 py-0.5 rounded-md text-[10px] font-black ${
-                              acc.role === 'ADMIN' ? 'bg-slate-900 text-amber-300' :
-                              acc.role === 'TEACHER' ? 'bg-amber-400 text-emerald-950' : 'bg-emerald-100 text-emerald-800'
-                            }`}>
-                              {acc.role === 'ADMIN' ? 'مدير نظام' : acc.role === 'TEACHER' ? 'معلم مجاز' : 'طالب'}
-                            </span>
-                            <span className={`px-2 py-0.5 rounded-md text-[10px] font-black ${
-                              isBlocked ? 'bg-red-600 text-white' : 'bg-emerald-700 text-white'
-                            }`}>
-                              {isBlocked ? (isAr ? 'محظور' : 'Blocked') : (isAr ? 'مفعل' : 'Active')}
-                            </span>
+                    <li key={acc.id} className="flex flex-col gap-3 p-3 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="flex min-w-0 items-center gap-3">
+                        <AvatarBadge nameAr={acc.name} nameEn={acc.name} size="sm" />
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <p className="font-semibold text-slate-900">{acc.name}</p>
+                            <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600">{roleLabel}</span>
+                            <span className={`rounded-full px-2 py-0.5 text-xs ${isBlocked ? 'bg-red-50 text-red-700' : 'bg-emerald-50 text-emerald-700'}`}>{isBlocked ? (isAr ? 'موقوف' : 'Blocked') : (isAr ? 'نشط' : 'Active')}</span>
                           </div>
-
-                          <p className="text-slate-500 font-medium">
-                            ID: {acc.id} • {acc.email} • {acc.phone || '+966 50 000 0000'}
-                          </p>
+                          <p className="truncate text-sm text-slate-500">{acc.email}</p>
                         </div>
                       </div>
-
-                      <div className="flex items-center gap-2 self-stretch md:self-auto justify-end pt-2 md:pt-0">
-                        {/* Profile Link for Students */}
-                        {acc.role === 'STUDENT' && (
-                          <>
-                            {acc.studentProfile?.verificationStatus === 'PENDING_VERIFICATION' && (
-                              <button
-                                onClick={() => setMainTab('RECEIPTS')}
-                                className="px-3.5 py-2 rounded-xl bg-amber-100 hover:bg-amber-200 text-amber-900 font-extrabold text-xs transition-colors cursor-pointer flex items-center gap-1"
-                              >
-                                <Building2 className="w-3.5 h-3.5 text-amber-800" />
-                                <span>{isAr ? 'اعتماد الإيصال ↗' : 'Approve Receipt ↗'}</span>
-                              </button>
-                            )}
-                            <Link
-                              href={`/teacher/students/${acc.id}`}
-                              className="px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-extrabold text-xs transition-colors"
-                            >
-                              {isAr ? 'عرض الملف' : 'View Profile'}
-                            </Link>
-                          </>
+                      <div className="flex flex-wrap items-center gap-2 sm:shrink-0">
+                        {acc.role === 'STUDENT' && isPendingPaymentRequest(acc.studentProfile) && (
+                          <button onClick={() => setMainTab('RECEIPTS')} className="rounded-lg bg-amber-50 px-2.5 py-2 text-xs font-semibold text-amber-900 hover:bg-amber-100">{isAr ? 'مراجعة الطلب' : 'Review request'}</button>
                         )}
-
-                        {/* Profile Link for Teachers */}
-                        {acc.role === 'TEACHER' && (
-                          <Link
-                            href={`/admin/teachers/${acc.id}`}
-                            className="px-3.5 py-2 rounded-xl gold-gradient-bg text-emerald-950 font-black text-xs transition-all shadow-xs hover:brightness-105 flex items-center gap-1"
-                          >
-                            <Eye className="w-3.5 h-3.5" />
-                            <span>{isAr ? 'عرض المعلم والجدول ↗' : 'View Teacher Profile ↗'}</span>
-                          </Link>
-                        )}
-
-                        {/* BLOCK / UNBLOCK TOGGLE BUTTON */}
-                        <button
-                          onClick={() => toggleBlockAccount(acc.id)}
-                          className={`px-4 py-2 rounded-xl text-xs font-black transition-all cursor-pointer flex items-center gap-1.5 ${
-                            isBlocked
-                              ? 'bg-emerald-700 hover:bg-emerald-800 text-white shadow-xs'
-                              : 'bg-red-600 hover:bg-red-700 text-white shadow-xs'
-                          }`}
-                        >
-                          {isBlocked ? (
-                            <>
-                              <Unlock className="w-3.5 h-3.5" />
-                              <span>{isAr ? 'إلغاء الحظر والتفعيل' : 'Unblock Account'}</span>
-                            </>
-                          ) : (
-                            <>
-                              <Ban className="w-3.5 h-3.5" />
-                              <span>{isAr ? 'حظر وتجميد الحساب' : 'Block Account'}</span>
-                            </>
-                          )}
+                        {acc.role === 'STUDENT' && <Link href={`/teacher/students/${acc.id}`} className="rounded-lg bg-slate-100 px-2.5 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-200">{isAr ? 'ملف الطالب' : 'Student profile'}</Link>}
+                        {acc.role === 'TEACHER' && <Link href={`/admin/teachers/${acc.id}`} className="rounded-lg bg-slate-100 px-2.5 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-200">{isAr ? 'ملف المعلم' : 'Teacher profile'}</Link>}
+                        <button disabled={Boolean(busyAction)} onClick={() => runAction(acc.id, () => toggleBlockAccount(acc.id))} className={`rounded-lg px-2.5 py-2 text-xs font-semibold ${isBlocked ? 'text-emerald-800 hover:bg-emerald-50' : 'text-red-700 hover:bg-red-50'}`}>
+                          {isBlocked ? (isAr ? 'إلغاء الإيقاف' : 'Unblock') : (isAr ? 'إيقاف' : 'Block')}
                         </button>
                       </div>
-                    </div>
+                    </li>
                   );
                 })}
-              </div>
+              </ul>
             ) : (
-              <div className="text-center py-10 text-xs text-slate-500 font-bold bg-slate-50 rounded-2xl border border-slate-200">
-                {isAr ? 'لا توجد حسابات تطابق البحث المحدد.' : 'No user accounts found.'}
-              </div>
+              <p className="rounded-lg border border-dashed border-slate-300 py-10 text-center text-sm text-slate-500">{isAr ? 'لا توجد حسابات مطابقة.' : 'No matching accounts.'}</p>
             )}
-          </div>
+          </section>
         )}
 
         {/* TAB 3: STUDENT SUBSCRIPTIONS & RECEIPTS APPROVAL */}
         {mainTab === 'RECEIPTS' && (
-          <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200 shadow-sm space-y-6 animate-in fade-in">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-4">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl gold-gradient-bg flex items-center justify-center text-emerald-950 font-black">
-                  <Building2 className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="font-extrabold text-lg text-emerald-950">
-                    {isAr ? 'مركز اعتماد اشتراكات وإيصالات الطلاب (Admin Verification)' : 'Student Subscription Approvals'}
-                  </h3>
-                  <p className="text-xs text-slate-500 font-medium">
-                    {isAr ? 'مراجعة إيصال التحويل البنكي لكل طالب واعتماد الحصص الشهرية مباشرة.' : 'Verify student bank transfer receipts to activate class allowances.'}
-                  </p>
-                </div>
-              </div>
-            </div>
+          <section className="space-y-4 rounded-xl border border-slate-200 bg-white p-4 sm:p-5 animate-in fade-in">
+            <header className="border-b border-slate-100 pb-4">
+              <h2 className="text-lg font-bold text-slate-950">{isAr ? 'طلبات الاشتراك' : 'Subscription requests'}</h2>
+              <p className="mt-1 text-sm text-slate-500">{isAr ? 'راجع الإيصال ثم اعتمد الطلب أو ارفضه.' : 'Review each receipt, then approve or reject the request.'}</p>
+            </header>
 
             {pendingStudentsCount > 0 ? (
               <div className="space-y-4">
                 {pendingStudentsList.map(st => {
-                  const targetPlan = plans.find(p => p.id === (st.pendingPlanId || st.activePlanId)) || plans[1];
-                  const targetTeacher = teachers.find(t => t.id === st.assignedTeacherId) || teachers[0];
+                  const targetPlan = plans.find(plan => plan.id === (st.pendingPlanId || st.activePlanId)) || plans[0];
+                  const targetTeacher = teachers.find(teacher => teacher.id === st.assignedTeacherId);
+                  const isExtraClass = st.subscriptionChangeType === 'EXTRA_CLASS';
+                  const requestLabel = isExtraClass
+                    ? (isAr ? 'حصة إضافية' : 'Extra class')
+                    : st.subscriptionChangeType === 'RENEWAL'
+                      ? (isAr ? 'تجديد' : 'Renewal')
+                      : st.subscriptionChangeType === 'UPGRADE_NEXT_MONTH'
+                        ? (isAr ? 'ترقية' : 'Upgrade')
+                        : st.subscriptionChangeType === 'DOWNGRADE_NEXT_MONTH'
+                          ? (isAr ? 'تغيير الخطة' : 'Plan change')
+                          : (isAr ? 'اشتراك جديد' : 'New subscription');
 
                   return (
-                    <div key={st.id} className="bg-amber-50/70 border-2 border-amber-300 rounded-3xl p-6 space-y-4 shadow-xs">
-                      <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-                        <div className="flex items-start gap-4">
-                          <AvatarBadge nameAr={st.nameAr} nameEn={st.nameEn} size="lg" />
-                          <div className="space-y-1 text-xs">
-                            <div className="flex items-center gap-2">
-                              <h4 className="font-black text-base text-slate-900">
-                                {isAr ? st.nameAr : st.nameEn}
-                              </h4>
-                              <span className={`font-black px-2.5 py-0.5 rounded-full text-[10px] ${
-                                st.subscriptionChangeType === 'EXTRA_CLASS'
-                                  ? 'bg-purple-100 text-purple-950 border border-purple-300'
-                                  : st.subscriptionChangeType === 'UPGRADE_NEXT_MONTH'
-                                  ? 'bg-emerald-100 text-emerald-900 border border-emerald-300'
-                                  : st.subscriptionChangeType === 'DOWNGRADE_NEXT_MONTH'
-                                  ? 'bg-orange-100 text-orange-900 border border-orange-300'
-                                  : st.subscriptionChangeType === 'RENEWAL'
-                                  ? 'bg-blue-100 text-blue-900 border border-blue-300'
-                                  : 'bg-amber-200 text-amber-900'
-                              }`}>
-                                {st.subscriptionChangeType === 'EXTRA_CLASS' && (isAr ? 'طلب شراء حصة إضافية (20 ر.س)' : 'Extra Class (20 SAR)')}
-                                {st.subscriptionChangeType === 'UPGRADE_NEXT_MONTH' && (isAr ? 'ترقية للشهر القادم' : 'Upgrade Next Month')}
-                                {st.subscriptionChangeType === 'DOWNGRADE_NEXT_MONTH' && (isAr ? 'تقليص للشهر القادم' : 'Downgrade Next Month')}
-                                {st.subscriptionChangeType === 'RENEWAL' && (isAr ? 'تجديد اشتراك شهري' : 'Monthly Renewal')}
-                                {(!st.subscriptionChangeType || st.subscriptionChangeType === 'NEW') && (isAr ? 'اشتراك شهري جديد' : 'New Monthly Subscription')}
-                              </span>
+                    <article key={st.id} className="rounded-xl border border-slate-200 bg-white p-4 sm:p-5">
+                      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                        <div className="flex min-w-0 items-center gap-3">
+                          <AvatarBadge nameAr={st.nameAr} nameEn={st.nameEn} size="md" />
+                          <div className="min-w-0">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <h4 className="font-bold text-slate-950">{isAr ? st.nameAr : st.nameEn}</h4>
+                              <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-900">{requestLabel}</span>
                             </div>
-                            <p className="text-slate-600 font-semibold">{st.email} • {st.phone}</p>
-                            <p className="text-emerald-900 font-extrabold pt-1">
-                              {st.subscriptionChangeType === 'EXTRA_CLASS' ? (
-                                isAr ? 'الطلب: حصة إضافية فردية (20 ر.س) للتسميع والمراجعة' : 'Request: Single Extra Class (20 SAR)'
-                              ) : (
-                                <>
-                                  {isAr ? `الخطة المطلوبة: ${targetPlan.titleAr} (${targetPlan.priceMonthlySar} ر.س • ${targetPlan.lessonsPerMonth} حصص)` : `Plan: ${targetPlan.titleEn}`}
-                                  {' • '}
-                                  {isAr ? `المعلم المختار: ${targetTeacher.nameAr}` : `Teacher: ${targetTeacher.nameEn}`}
-                                </>
-                              )}
-                            </p>
+                            <p className="mt-1 truncate text-sm text-slate-500">{st.email}{st.phone ? ` · ${st.phone}` : ''}</p>
                           </div>
                         </div>
-
-                        <div className="bg-white p-4 rounded-2xl border border-amber-200 text-xs space-y-2 min-w-64 shadow-2xs">
-                          <span className="text-slate-500 font-bold block border-b border-slate-100 pb-1">{isAr ? 'تفاصيل الطلب والجدول:' : 'Application & Schedule Details:'}</span>
-                          
-                          {st.quranGoal && (
-                            <div className="space-y-1 text-[11px] text-slate-700 font-medium">
-                              {st.quranGoal.targetSurahOrJuzAr && (
-                                <div className="text-emerald-950 font-bold">
-                                  🎯 {st.quranGoal.targetSurahOrJuzAr}
-                                </div>
-                              )}
-                              {st.quranGoal.agreedWeeklyDaysAr && st.quranGoal.agreedWeeklyDaysAr.length > 0 && (
-                                <div className="text-slate-700 font-semibold">
-                                  📅 {isAr ? 'الأيام المختارة:' : 'Days:'} {st.quranGoal.agreedWeeklyDaysAr.join(' • ')}
-                                </div>
-                              )}
-                              {st.quranGoal.dayTimeSlots && Object.keys(st.quranGoal.dayTimeSlots).length > 0 && (
-                                <div className="text-slate-600 font-mono text-[10px]">
-                                  ⏰ {Object.entries(st.quranGoal.dayTimeSlots).map(([d, t]) => `${d} @ ${t}`).join(' | ')}
-                                </div>
-                              )}
-                            </div>
-                          )}
-
-                          <div className="pt-1.5 border-t border-slate-100 space-y-1">
-                            <span className="text-slate-400 font-bold block text-[10px]">{isAr ? 'بيانات التحويل البنكي:' : 'Bank Transfer Info:'}</span>
-                            <div className="font-mono text-emerald-900 font-black">{st.bankTransferRef || 'REF-829104'}</div>
-                            <div className="text-slate-600 text-[11px]">{st.paymentReceiptUrl || 'إيصال_تحويل_مصرف_الراجحي.png'}</div>
-                            <div className="text-slate-400 text-[10px]">{st.paymentDate || new Date().toISOString().split('T')[0]}</div>
-                          </div>
+                        <div className="flex gap-2 sm:shrink-0">
+                          <button
+                            onClick={() => {
+                              setRejectingStudent({ id: st.id, name: st.nameAr || st.nameEn });
+                              setSelectedRejectionReason(PRESET_REJECTION_REASONS[0]);
+                              setCustomRejectionReason('');
+                            }}
+                            className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                          >
+                            {isAr ? 'رفض' : 'Reject'}
+                          </button>
+                          <button
+                            disabled={Boolean(busyAction)} onClick={() => runAction(st.id, () => approveStudentPayment(st.id))}
+                            className="rounded-lg bg-emerald-900 px-3 py-2 text-sm font-semibold text-white hover:bg-emerald-800"
+                          >
+                            {isAr ? 'اعتماد' : 'Approve'}
+                          </button>
                         </div>
                       </div>
 
-                      <div className="flex items-center justify-end gap-3 pt-3 border-t border-amber-200/80">
-                        <button
-                          onClick={() => {
-                            setRejectingStudent({ id: st.id, name: st.nameAr || st.nameEn });
-                            setSelectedRejectionReason(PRESET_REJECTION_REASONS[0]);
-                            setCustomRejectionReason('');
-                          }}
-                          className="px-4 py-2.5 rounded-xl border border-red-300 text-red-700 hover:bg-red-50 text-xs font-bold transition-colors cursor-pointer flex items-center gap-1.5"
-                        >
-                          <XCircle className="w-4 h-4" />
-                          <span>{isAr ? 'رفض الإيصال' : 'Reject Receipt'}</span>
-                        </button>
+                      <dl className="mt-4 grid gap-3 border-t border-slate-100 pt-4 sm:grid-cols-2 lg:grid-cols-3">
+                        <div>
+                          <dt className="text-xs text-slate-500">{isAr ? 'الخطة' : 'Plan'}</dt>
+                          <dd className="mt-1 text-sm font-semibold text-slate-900">
+                            {isExtraClass
+                              ? (isAr ? `حصة إضافية × ${st.pendingExtraClassQuantity || 1}` : `Extra class × ${st.pendingExtraClassQuantity || 1}`)
+                              : `${isAr ? targetPlan.titleAr : targetPlan.titleEn} · ${targetPlan.priceMonthlySar} ${isAr ? 'ر.س' : 'SAR'}`}
+                          </dd>
+                          {!isExtraClass && <dd className="text-xs text-slate-500">{targetPlan.lessonsPerMonth} {isAr ? 'حصة شهرياً' : 'classes/month'} · {targetPlan.lessonDurationMinutes} {isAr ? 'دقيقة' : 'min'}</dd>}
+                        </div>
+                        <div>
+                          <dt className="text-xs text-slate-500">{isAr ? 'المعلم' : 'Teacher'}</dt>
+                          <dd className="mt-1 text-sm font-semibold text-slate-900">{targetTeacher ? (isAr ? targetTeacher.nameAr : targetTeacher.nameEn) : '—'}</dd>
+                        </div>
+                        <div>
+                          <dt className="text-xs text-slate-500">{isAr ? 'الهدف القرآني' : 'Quran goal'}</dt>
+                          <dd className="mt-1 text-sm text-slate-700">{localizeQuranScope(isAr ? st.quranGoal?.targetSurahOrJuzAr : (st.quranGoal?.targetSurahOrJuzEn || st.quranGoal?.targetSurahOrJuzAr), isAr) || '—'}</dd>
+                        </div>
+                      </dl>
 
-                        <button
-                          onClick={() => approveStudentPayment(st.id)}
-                          className="px-6 py-2.5 rounded-xl gold-gradient-bg text-emerald-950 font-black text-xs shadow-md hover:brightness-110 transition-all flex items-center gap-1.5 cursor-pointer"
-                        >
-                          <CheckCircle2 className="w-4 h-4 stroke-[2.5]" />
-                          <span>
-                            {st.subscriptionChangeType === 'EXTRA_CLASS'
-                              ? (isAr ? 'اعتماد الإيصال وتفعيل الحصة الإضافية (+1)' : 'Approve & Add Extra Class')
-                              : (isAr ? 'اعتماد الإيصال وتفعيل الخطة' : 'Approve & Activate Plan')}
-                          </span>
-                        </button>
+                      <div className="mt-4 flex flex-col gap-2 border-t border-slate-100 pt-3 text-sm sm:flex-row sm:items-center sm:justify-between">
+                        <div className="text-slate-600">
+                          <span className="font-medium">{isAr ? 'مرجع التحويل:' : 'Transfer reference:'}</span> {st.bankTransferRef || '—'}
+                          {st.paymentDate ? <span className="text-slate-400"> · {st.paymentDate}</span> : null}
+                        </div>
+                        {st.paymentReceiptUrl?.startsWith('data:') ? (
+                          <a href={`/api/admin/students/${encodeURIComponent(st.id)}/receipt`} target="_blank" rel="noreferrer" className="font-semibold text-emerald-800 underline underline-offset-2">
+                            {isAr ? 'عرض الإيصال' : 'View receipt'}
+                          </a>
+                        ) : <span className="text-xs text-slate-500">{st.paymentReceiptUrl ? (isAr ? 'أعد رفع الإيصال لفتحه' : 'Re-upload receipt to view') : (isAr ? 'لم يرفق إيصال' : 'No receipt attached')}</span>}
                       </div>
-                    </div>
+                    </article>
                   );
                 })}
               </div>
             ) : (
-              <div className="text-center py-10 space-y-2 bg-slate-50 rounded-2xl border border-slate-200">
+              <div className="space-y-1 rounded-lg border border-dashed border-slate-300 py-10 text-center">
                 <CheckCircle2 className="w-10 h-10 text-emerald-600 mx-auto" />
                 <h4 className="text-sm font-bold text-slate-800">
                   {isAr ? 'لا توجد إيصالات اشتراك معلقة حالياً' : 'No pending subscription receipts'}
@@ -721,58 +481,36 @@ function AdminDashboardContent() {
                 </p>
               </div>
             )}
-          </div>
+          </section>
         )}
 
         {/* TAB 4: TEACHER APPLICATIONS REVIEW */}
         {mainTab === 'TEACHERS' && (
-          <div className="bg-white rounded-3xl p-6 border border-slate-200 shadow-sm space-y-6 animate-in fade-in">
-            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-slate-100 pb-4">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl emerald-gradient-bg flex items-center justify-center text-amber-400">
-                  <GraduationCap className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="font-extrabold text-lg text-emerald-950">
-                    {isAr ? 'مركز مراجعة واعتماد طلبات المعلمين' : 'Teacher Applications Review Center'}
-                  </h3>
-                  <p className="text-xs text-slate-500 font-medium">
-                    {isAr ? 'تحقق من السند والإجازة القرآنية لكل معلم قبل قبول حسابه في الدليل العام.' : 'Review teacher Ijazah credentials before activating account.'}
-                  </p>
-                </div>
-              </div>
-            </div>
+          <section className="space-y-4 rounded-xl border border-slate-200 bg-white p-4 sm:p-5 animate-in fade-in">
+            <header className="border-b border-slate-100 pb-4">
+              <h2 className="text-lg font-bold text-slate-950">{isAr ? 'مراجعة المعلمين' : 'Teacher review'}</h2>
+              <p className="mt-1 text-sm text-slate-500">{isAr ? 'راجع بيانات المعلم وإجازته قبل تفعيل الحساب.' : 'Check each teacher’s profile and credentials before approval.'}</p>
+            </header>
 
-            {teachers.length > 0 ? (
+            {pendingTeachers.length > 0 ? (
               <div className="space-y-4">
-                {teachers.map((teacher) => (
-                  <div
-                    key={teacher.id}
-                    className="bg-slate-50 rounded-2xl p-5 border border-slate-200 flex flex-col md:flex-row items-start md:items-center justify-between gap-4"
-                  >
+                {pendingTeachers.map((teacher) => (
+                  <article key={teacher.id} className="flex flex-col gap-4 rounded-lg border border-slate-200 p-4 sm:flex-row sm:items-start sm:justify-between">
                     <div className="flex items-start gap-4">
                       <AvatarBadge nameAr={teacher.nameAr} nameEn={teacher.nameEn} size="lg" />
-                      <div className="space-y-1 text-xs">
-                        <div className="flex items-center gap-2">
-                          <h4 className="font-extrabold text-base text-emerald-950">
+                      <div className="min-w-0 space-y-1 text-sm">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <h3 className="font-semibold text-slate-950">
                             {isAr ? teacher.nameAr : teacher.nameEn}
-                          </h4>
-                          <span className={`font-extrabold px-2.5 py-0.5 rounded-full text-[10px] ${
-                            teacher.approvalStatus === 'APPROVED'
-                              ? 'bg-emerald-100 text-emerald-800'
-                              : teacher.approvalStatus === 'PENDING_ADMIN'
-                              ? 'bg-amber-100 text-amber-900 border border-amber-300'
-                              : 'bg-red-100 text-red-800'
-                          }`}>
-                            {teacher.approvalStatus === 'APPROVED' && (isAr ? 'معتمد' : 'Approved')}
-                            {teacher.approvalStatus === 'PENDING_ADMIN' && (isAr ? 'قيد مراجعة الإدارة' : 'Pending Admin')}
-                            {teacher.approvalStatus === 'REJECTED' && (isAr ? 'مرفوض' : 'Rejected')}
+                          </h3>
+                          <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-900">
+                            {isAr ? 'بانتظار المراجعة' : 'Pending review'}
                           </span>
                         </div>
-                        <p className="text-slate-600 font-semibold">{teacher.email}</p>
-                        <div className="bg-white p-3 rounded-xl border border-slate-200 text-slate-800 text-[11px] font-serif max-w-xl">
-                          <strong>{isAr ? 'تفاصيل السند بالإجازة:' : 'Ijazah Chain:'}</strong> {isAr ? teacher.ijazahDetailsAr : teacher.ijazahDetailsEn}
-                        </div>
+                        <p className="text-slate-500">{teacher.email}</p>
+                        <p className="max-w-2xl text-sm text-slate-700">
+                          <span className="font-medium">{isAr ? 'الإجازة: ' : 'Credentials: '}</span>{isAr ? teacher.ijazahDetailsAr : teacher.ijazahDetailsEn}
+                        </p>
                       </div>
                     </div>
 
@@ -780,58 +518,60 @@ function AdminDashboardContent() {
                     <div className="flex items-center gap-2 w-full md:w-auto shrink-0 pt-2 md:pt-0 border-t md:border-t-0 border-slate-200 justify-end">
                       <Link
                         href={`/admin/teachers/${teacher.id}`}
-                        className="px-4 py-2.5 rounded-xl gold-gradient-bg text-emerald-950 font-black text-xs shadow-xs hover:brightness-105 transition-all flex items-center justify-center gap-1.5"
+                        className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
                       >
                         <Eye className="w-3.5 h-3.5" />
-                        <span>{isAr ? 'عرض ملف المعلم والجدول ↗' : 'View Teacher Profile & Schedule ↗'}</span>
+                        <span>{isAr ? 'عرض الملف' : 'View profile'}</span>
                       </Link>
 
                       {teacher.approvalStatus === 'PENDING_ADMIN' && (
                         <>
                           <button
-                            onClick={() => rejectTeacherByAdmin(teacher.id)}
-                            className="px-4 py-2.5 rounded-xl border border-red-300 text-red-700 hover:bg-red-50 text-xs font-bold transition-colors cursor-pointer"
+                            disabled={Boolean(busyAction)} onClick={() => runAction(teacher.id, () => rejectTeacherByAdmin(teacher.id))}
+                            className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-red-700 hover:bg-red-50"
                           >
                             {isAr ? 'رفض الطلب' : 'Reject'}
                           </button>
 
                           <button
-                            onClick={() => approveTeacherByAdmin(teacher.id)}
-                            className="px-5 py-2.5 rounded-xl emerald-gradient-bg text-white font-extrabold text-xs shadow-md hover:opacity-95 transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                            disabled={Boolean(busyAction)} onClick={() => runAction(teacher.id, () => approveTeacherByAdmin(teacher.id))}
+                            className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-emerald-900 px-3 py-2 text-sm font-semibold text-white hover:bg-emerald-800"
                           >
-                            <CheckCircle2 className="w-4 h-4 text-amber-400" />
+                            <CheckCircle2 className="h-4 w-4" />
                             <span>{isAr ? 'قبول وتفعيل' : 'Approve'}</span>
                           </button>
                         </>
                       )}
                     </div>
-                  </div>
+                  </article>
                 ))}
               </div>
             ) : (
-              <div className="text-center py-8 text-slate-500 text-xs">
+              <div className="rounded-lg border border-dashed border-slate-300 py-10 text-center text-sm text-slate-500">
                 {isAr ? 'لا توجد طلبات في هذه الفئة حالياً.' : 'No applications found.'}
               </div>
             )}
-          </div>
+          </section>
         )}
 
+          </main>
+        </div>
       </div>
 
-      {/* CREATE NEW USER ACCOUNT MODAL */}
+            {/* CREATE NEW USER ACCOUNT MODAL */}
       {isCreateAccountModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in">
-          <div className="bg-white rounded-3xl max-w-lg w-full p-6 sm:p-8 shadow-2xl border border-slate-100 space-y-6">
-            
+        <AccessibleModal onClose={() => setIsCreateAccountModalOpen(false)} aria-label={isAr ? "إنشاء حساب" : "Create account"} className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4 animate-in fade-in">
+          <div className="max-h-[90vh] w-full max-w-lg space-y-5 overflow-y-auto rounded-xl border border-slate-200 bg-white p-5 shadow-xl sm:p-6">
+
             {/* Modal Header */}
             <div className="flex items-center justify-between border-b border-slate-100 pb-4">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-2xl bg-emerald-950 text-amber-400 flex items-center justify-center font-black">
+                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-50 text-emerald-800">
                   <UserPlus className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="font-black text-lg text-slate-900">
-                    {isAr ? 'إنشاء حساب عضو جديد' : 'Create New User Account'}
+                    <h3 className="text-lg font-bold text-slate-950">
+                    {isAr ? 'إنشاء حساب' : 'Create account'}
                   </h3>
                   <p className="text-xs text-slate-500 font-semibold">
                     {isAr ? 'إضافة طالب أو معلم أو مدير جديد للنظام' : 'Add new student, teacher, or admin account'}
@@ -839,13 +579,14 @@ function AdminDashboardContent() {
                 </div>
               </div>
               <button
-                onClick={() => setIsCreateAccountModalOpen(false)}
+                aria-label={isAr ? "إغلاق" : "Close"} onClick={() => setIsCreateAccountModalOpen(false)}
                 className="p-2 rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-700 cursor-pointer transition-colors"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
+            {createError && <p role="alert" className="mb-3 text-rose-700 text-sm">{createError}</p>}
             {createSuccessMsg ? (
               <div className="py-8 text-center space-y-3 bg-emerald-50 rounded-2xl border border-emerald-200">
                 <CheckCircle2 className="w-12 h-12 text-emerald-600 mx-auto" />
@@ -853,15 +594,15 @@ function AdminDashboardContent() {
               </div>
             ) : (
               <form onSubmit={handleCreateAccountSubmit} className="space-y-4 text-xs">
-                
+
                 <div className="space-y-1">
                   <label className="font-bold text-slate-700 block">{isAr ? 'نوع الحساب / الصلاحية:' : 'Role:'}</label>
                   <div className="grid grid-cols-3 gap-2">
                     <button
                       type="button"
                       onClick={() => setNewAccRole('STUDENT')}
-                      className={`py-2 rounded-xl font-black border transition-all cursor-pointer ${
-                        newAccRole === 'STUDENT' ? 'bg-emerald-950 text-amber-400 border-emerald-900' : 'bg-slate-50 text-slate-700 border-slate-200'
+                      className={`rounded-lg border px-3 py-2 text-sm font-semibold transition-colors ${
+                        newAccRole === 'STUDENT' ? 'border-emerald-900 bg-emerald-900 text-white' : 'border-slate-200 bg-white text-slate-700'
                       }`}
                     >
                       {isAr ? 'طالب' : 'Student'}
@@ -869,8 +610,8 @@ function AdminDashboardContent() {
                     <button
                       type="button"
                       onClick={() => setNewAccRole('TEACHER')}
-                      className={`py-2 rounded-xl font-black border transition-all cursor-pointer ${
-                        newAccRole === 'TEACHER' ? 'bg-emerald-950 text-amber-400 border-emerald-900' : 'bg-slate-50 text-slate-700 border-slate-200'
+                      className={`rounded-lg border px-3 py-2 text-sm font-semibold transition-colors ${
+                        newAccRole === 'TEACHER' ? 'border-emerald-900 bg-emerald-900 text-white' : 'border-slate-200 bg-white text-slate-700'
                       }`}
                     >
                       {isAr ? 'معلم' : 'Teacher'}
@@ -878,8 +619,8 @@ function AdminDashboardContent() {
                     <button
                       type="button"
                       onClick={() => setNewAccRole('ADMIN')}
-                      className={`py-2 rounded-xl font-black border transition-all cursor-pointer ${
-                        newAccRole === 'ADMIN' ? 'bg-emerald-950 text-amber-400 border-emerald-900' : 'bg-slate-50 text-slate-700 border-slate-200'
+                      className={`rounded-lg border px-3 py-2 text-sm font-semibold transition-colors ${
+                        newAccRole === 'ADMIN' ? 'border-emerald-900 bg-emerald-900 text-white' : 'border-slate-200 bg-white text-slate-700'
                       }`}
                     >
                       {isAr ? 'مدير' : 'Admin'}
@@ -915,7 +656,7 @@ function AdminDashboardContent() {
                   <div className="space-y-1">
                     <label className="font-bold text-slate-700 block">{isAr ? 'كلمة المرور:' : 'Password:'}</label>
                     <input
-                      type="text"
+                      type="password"
                       required
                       value={newAccPassword}
                       onChange={(e) => setNewAccPassword(e.target.value)}
@@ -949,17 +690,17 @@ function AdminDashboardContent() {
                 <div className="flex items-center justify-between pt-4 border-t border-slate-100">
                   <button
                     type="button"
-                    onClick={() => setIsCreateAccountModalOpen(false)}
+                    aria-label={isAr ? "إغلاق" : "Close"} onClick={() => setIsCreateAccountModalOpen(false)}
                     className="px-4 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold transition-colors cursor-pointer"
                   >
                     {isAr ? 'إلغاء' : 'Cancel'}
                   </button>
 
                   <button
-                    type="submit"
-                    className="px-6 py-2.5 rounded-xl gold-gradient-bg text-emerald-950 font-black shadow-md hover:brightness-105 transition-all cursor-pointer"
+                    type="submit" disabled={creatingAccount}
+                    className="rounded-lg bg-emerald-900 px-4 py-2.5 text-sm font-semibold text-white hover:bg-emerald-800"
                   >
-                    {isAr ? 'إنشاء وتفعيل الحساب' : 'Create Account'}
+                    {isAr ? 'إنشاء الحساب' : 'Create Account'}
                   </button>
                 </div>
 
@@ -967,12 +708,12 @@ function AdminDashboardContent() {
             )}
 
           </div>
-        </div>
+        </AccessibleModal>
       )}
 
       {/* REJECTION REASON MODAL */}
       {rejectingStudent && (
-        <div className="fixed inset-0 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in">
+        <AccessibleModal onClose={() => setRejectingStudent(null)} aria-label={isAr ? "رفض طلب الدفع" : "Reject payment request"} className="fixed inset-0 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in">
           <div className="bg-white rounded-3xl p-6 sm:p-8 max-w-lg w-full space-y-6 shadow-2xl border border-slate-200">
             <div className="flex items-center justify-between border-b border-slate-100 pb-4">
               <div className="flex items-center gap-3">
@@ -984,12 +725,12 @@ function AdminDashboardContent() {
                     {isAr ? `رفض طلب الطالب: ${rejectingStudent.name}` : `Reject Application: ${rejectingStudent.name}`}
                   </h3>
                   <p className="text-xs text-slate-500 font-medium">
-                    {isAr ? 'سيتم حذف الحصص وإلغاء المواعيد وإرسال السبب للطالب.' : 'Classes will be deleted and reason sent to student.'}
+                    {isAr ? 'سيتم رفض الطلب وإرسال السبب للطالب، مع الحفاظ على الحصص المدفوعة الحالية.' : 'The request will be rejected and the student notified. Existing paid classes are preserved.'}
                   </p>
                 </div>
               </div>
               <button
-                onClick={() => setRejectingStudent(null)}
+                aria-label={isAr ? "إغلاق" : "Close"} onClick={() => setRejectingStudent(null)}
                 className="text-slate-400 hover:text-slate-600 p-1 cursor-pointer"
               >
                 <X className="w-5 h-5" />
@@ -1002,7 +743,7 @@ function AdminDashboardContent() {
                   {isAr ? 'اختر سبب الرفض:' : 'Select Rejection Reason:'}
                 </label>
                 <div className="space-y-2">
-                  {PRESET_REJECTION_REASONS.map((r) => (
+                  {PRESET_REJECTION_REASONS.map((r, index) => (
                     <label
                       key={r}
                       className={`flex items-center gap-2.5 p-3 rounded-2xl border text-xs font-semibold cursor-pointer transition-all ${
@@ -1019,7 +760,7 @@ function AdminDashboardContent() {
                         onChange={() => setSelectedRejectionReason(r)}
                         className="accent-red-600"
                       />
-                      <span>{r}</span>
+                      <span>{isAr ? r : rejectionReasonsEn[index]}</span>
                     </label>
                   ))}
                 </div>
@@ -1041,20 +782,20 @@ function AdminDashboardContent() {
               )}
             </div>
 
+            {actionError && <p role="alert" className="text-rose-700 text-sm">{actionError}</p>}
             <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-100">
               <button
-                onClick={() => setRejectingStudent(null)}
+                aria-label={isAr ? "إغلاق" : "Close"} onClick={() => setRejectingStudent(null)}
                 className="px-4 py-2.5 rounded-xl border border-slate-300 text-slate-700 text-xs font-bold hover:bg-slate-50 transition-colors cursor-pointer"
               >
                 {isAr ? 'إلغاء' : 'Cancel'}
               </button>
               <button
-                onClick={() => {
+                disabled={Boolean(busyAction)} onClick={async () => {
                   const finalReason = selectedRejectionReason === 'أخرى (كتابة سبب مخصص)'
                     ? (customRejectionReason.trim() || 'تم رفض الإيصال من الإدارة.')
-                    : selectedRejectionReason;
-                  rejectStudentPayment(rejectingStudent.id, finalReason);
-                  setRejectingStudent(null);
+                    : isAr ? selectedRejectionReason : rejectionReasonsEn[PRESET_REJECTION_REASONS.indexOf(selectedRejectionReason)];
+                  await runAction(rejectingStudent.id, async () => { await rejectStudentPayment(rejectingStudent.id, finalReason); setRejectingStudent(null); });
                 }}
                 className="px-6 py-2.5 rounded-xl bg-red-600 hover:bg-red-700 text-white font-black text-xs shadow-md transition-all cursor-pointer flex items-center gap-1.5"
               >
@@ -1063,7 +804,7 @@ function AdminDashboardContent() {
               </button>
             </div>
           </div>
-        </div>
+        </AccessibleModal>
       )}
     </div>
   );

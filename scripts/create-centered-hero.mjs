@@ -1,5 +1,5 @@
-const sharp = require('sharp');
-const path = require('path');
+import sharp from 'sharp';
+import path from 'node:path';
 
 async function createPerfectLargePopoutMan() {
   const dir = path.join(process.cwd(), 'public', 'images');

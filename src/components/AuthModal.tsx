@@ -1,8 +1,10 @@
 'use client';
 
+import { AccessibleModal } from './AccessibleModal';
+
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
-import { X, User, Mail, Phone, Lock, GraduationCap, CheckCircle2, ArrowRight, ShieldCheck, Calendar } from 'lucide-react';
+import { X, User, Mail, Phone, Lock, CheckCircle2, ShieldCheck, Calendar } from 'lucide-react';
 
 interface AuthModalProps {
   initialMode?: 'STUDENT_LOGIN' | 'STUDENT_REGISTER' | 'TEACHER_REGISTER';
@@ -30,7 +32,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   const [errorMessage, setErrorMessage] = useState('');
   const [isSuccess, setIsSuccess] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage('');
 
@@ -45,13 +47,13 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         return;
       }
       try {
-        registerStudentAccount(name, email, gender, phone, password || '123456');
+        await registerStudentAccount(name, email, gender, phone, password);
         setIsSuccess(true);
-      } catch (err: any) {
-        setErrorMessage(err.message || (isAr ? 'حدث خطأ أثناء التسجيل.' : 'Registration failed.'));
+      } catch (err) {
+        setErrorMessage(err instanceof Error ? err.message : (isAr ? 'حدث خطأ أثناء التسجيل.' : 'Registration failed.'));
       }
     } else if (mode === 'STUDENT_LOGIN') {
-      const res = login(email, password || '123456');
+      const res = await login(email, password);
       if (res.success) {
         setIsSuccess(true);
       } else {
@@ -63,10 +65,10 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         return;
       }
       try {
-        applyAsTeacher(name, email, gender, ijazahDetails, ['الإجازة بالسند المتصل'], password || '123456', phone, birthDate);
+        await applyAsTeacher(name, email, gender, ijazahDetails, ['الإجازة بالسند المتصل'], password, phone, birthDate);
         setIsSuccess(true);
-      } catch (err: any) {
-        setErrorMessage(err.message || (isAr ? 'حدث خطأ أثناء التسجيل.' : 'Registration failed.'));
+      } catch (err) {
+        setErrorMessage(err instanceof Error ? err.message : (isAr ? 'حدث خطأ أثناء التسجيل.' : 'Registration failed.'));
       }
     }
   };
@@ -77,7 +79,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/65 backdrop-blur-sm">
+    <AccessibleModal onClose={onClose} aria-label={isAr ? "تسجيل الدخول" : "Sign in"} className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/65 backdrop-blur-sm">
       <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-100 relative">
         <button
           onClick={onClose}
@@ -319,6 +321,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           </div>
         )}
       </div>
-    </div>
+    </AccessibleModal>
   );
 };

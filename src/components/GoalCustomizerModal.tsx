@@ -1,9 +1,12 @@
 'use client';
 
+import { localizeWeekday } from '@/utils/localization';
+import { AccessibleModal } from './AccessibleModal';
+
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { LearningGoalTrack, StudentQuranGoal } from '../types';
-import { X, Target, BookOpen, Calendar, Clock, CheckCircle2, Sparkles, Award, Repeat } from 'lucide-react';
+import { X, Target, CheckCircle2, Sparkles } from 'lucide-react';
 
 interface GoalCustomizerModalProps {
   onClose: () => void;
@@ -18,9 +21,9 @@ export const GoalCustomizerModal: React.FC<GoalCustomizerModalProps> = ({
   const isAr = language === 'ar';
 
   const [track, setTrack] = useState<LearningGoalTrack>(student.quranGoal?.track || 'HIFZ_NEW');
-  const [targetSurahAr, setTargetSurahAr] = useState(student.quranGoal?.targetSurahOrJuzAr || 'الجزء الثلاثون (جزء عم) + سورة البقرة');
-  const [selectedDays, setSelectedDays] = useState<string[]>(['الإثنين', 'الأربعاء']);
-  const [timeSlot, setTimeSlot] = useState('18:00');
+  const [targetSurahAr, setTargetSurahAr] = useState(student.quranGoal?.targetSurahOrJuzAr || '');
+  const [selectedDays, setSelectedDays] = useState<string[]>(student.quranGoal?.agreedWeeklyDaysAr || []);
+  const [timeSlot, setTimeSlot] = useState(student.quranGoal?.agreedTimeSlot || '12:00');
 
   const toggleDay = (day: string) => {
     if (selectedDays.includes(day)) {
@@ -36,9 +39,9 @@ export const GoalCustomizerModal: React.FC<GoalCustomizerModalProps> = ({
       track,
       targetSurahOrJuzAr: targetSurahAr,
       targetSurahOrJuzEn: targetSurahAr,
-      orientationCompleted: true,
+      orientationCompleted: student.quranGoal?.orientationCompleted || false,
       agreedWeeklyDaysAr: selectedDays,
-      agreedWeeklyDaysEn: selectedDays
+      agreedWeeklyDaysEn: selectedDays.map(day => localizeWeekday(day, false))
     };
 
     onSaveGoal(updatedGoal);
@@ -46,9 +49,9 @@ export const GoalCustomizerModal: React.FC<GoalCustomizerModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-md animate-fade-in">
+    <AccessibleModal onClose={onClose} aria-label={isAr ? "إعداد خطة القرآن" : "Customize Quran plan"} className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-md animate-fade-in">
       <div className="bg-white rounded-3xl max-w-xl w-full p-6 sm:p-8 shadow-2xl border border-slate-100 relative max-h-[90vh] overflow-y-auto">
-        
+
         {/* Close Button */}
         <button
           onClick={onClose}
@@ -73,7 +76,7 @@ export const GoalCustomizerModal: React.FC<GoalCustomizerModalProps> = ({
         </div>
 
         <form onSubmit={handleSave} className="space-y-6">
-          
+
           {/* Track Selector */}
           <div className="space-y-2">
             <label className="block text-xs font-bold text-slate-700">
@@ -179,7 +182,7 @@ export const GoalCustomizerModal: React.FC<GoalCustomizerModalProps> = ({
                 const isSelected = selectedDays.includes(day);
                 return (
                   <button
-                    key={day}
+                    key={localizeWeekday(day, isAr)}
                     type="button"
                     onClick={() => toggleDay(day)}
                     className={`px-3 py-2 rounded-xl border transition-all cursor-pointer ${
@@ -188,7 +191,7 @@ export const GoalCustomizerModal: React.FC<GoalCustomizerModalProps> = ({
                         : 'bg-slate-100 text-slate-600 border-slate-200 hover:bg-slate-200'
                     }`}
                   >
-                    {day}
+                    {localizeWeekday(day, isAr)}
                   </button>
                 );
               })}
@@ -219,6 +222,6 @@ export const GoalCustomizerModal: React.FC<GoalCustomizerModalProps> = ({
         </form>
 
       </div>
-    </div>
+    </AccessibleModal>
   );
 };

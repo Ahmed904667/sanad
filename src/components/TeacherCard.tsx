@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react';
 import { Teacher } from '../types';
+import { localizeLanguage, localizeSpecialty } from '@/utils/localization';
 import { useApp } from '../context/AppContext';
 import { AvatarBadge } from './AvatarBadge';
 import { Star, Award, Clock, Globe, Calendar, Lock, User } from 'lucide-react';
@@ -72,7 +73,7 @@ export const TeacherCard: React.FC<TeacherCardProps> = ({ teacher, onBook, onVie
                 title={isAr ? 'عرض آراء وتقييمات الطلاب' : 'View Reviews'}
               >
                 <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-500" />
-                <span className="font-bold text-xs text-amber-900">{teacher.rating.toFixed(1)}</span>
+                <span className="font-bold text-xs text-amber-900">{teacher.reviewsCount ? teacher.rating.toFixed(1) : (isAr ? 'لا توجد تقييمات' : 'No reviews')}</span>
                 <span className="text-[10px] text-amber-900 underline font-bold">
                   ({reviews.filter((r: Review) => r.teacherId === teacher.id).length || teacher.reviewsCount})
                 </span>
@@ -90,7 +91,7 @@ export const TeacherCard: React.FC<TeacherCardProps> = ({ teacher, onBook, onVie
               </span>
               <span className="flex items-center gap-1">
                 <Globe className="w-3.5 h-3.5 text-amber-600" />
-                {teacher.languagesSpoken.join(', ')}
+                {teacher.languagesSpoken.map(language => localizeLanguage(language, isAr)).join(', ')}
               </span>
             </div>
           </div>
@@ -99,20 +100,25 @@ export const TeacherCard: React.FC<TeacherCardProps> = ({ teacher, onBook, onVie
         {/* Ijazah Credentials Box */}
         <div className="bg-emerald-950 text-emerald-100 p-3 rounded-xl text-xs mb-4 border border-emerald-800 flex items-start gap-2">
           <Award className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
-          <p className="line-clamp-2 leading-relaxed text-[11px] font-serif">
-            {isAr ? teacher.ijazahDetailsAr : teacher.ijazahDetailsEn}
+          <p className="line-clamp-2 leading-relaxed text-[11px] font-serif"><span className="block mb-1 font-sans text-[10px] text-emerald-300">{isAr ? 'تفاصيل مقدمة من المعلم' : 'Details supplied by the teacher'}</span>
+            {(isAr ? teacher.ijazahDetailsAr : teacher.ijazahDetailsEn) || (isAr ? 'لم تُقدم تفاصيل الإجازة' : 'Certification details not provided')}
           </p>
         </div>
 
         {/* Specializations Tags */}
         <div className="mb-6">
+          {(isAr ? teacher.bioAr : (teacher.bioEn || teacher.bioAr)) && (
+            <p className="mb-3 line-clamp-3 text-xs leading-relaxed text-slate-600">
+              {isAr ? teacher.bioAr : (teacher.bioEn || teacher.bioAr)}
+            </p>
+          )}
           <div className="flex flex-wrap gap-1.5">
-            {(isAr ? teacher.specializationsAr : teacher.specializationsEn).map((spec, idx) => (
+            {((isAr ? teacher.specializationsAr : teacher.specializationsEn).length ? (isAr ? teacher.specializationsAr : teacher.specializationsEn) : teacher.specializationsAr).map((spec, idx) => (
               <span
                 key={idx}
                 className="bg-emerald-50 text-emerald-800 border border-emerald-100 px-2.5 py-1 rounded-lg text-[11px] font-bold"
               >
-                {spec}
+                {localizeSpecialty(spec, isAr)}
               </span>
             ))}
           </div>
@@ -132,7 +138,7 @@ export const TeacherCard: React.FC<TeacherCardProps> = ({ teacher, onBook, onVie
           disabled={isFull}
           onClick={() => onBook(teacher)}
           className={`flex-1 py-2.5 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
-            isFull 
+            isFull
               ? 'bg-slate-200 text-slate-400 border border-slate-300 cursor-not-allowed'
               : 'emerald-gradient-bg text-white hover:opacity-95 shadow-md hover:shadow-lg'
           }`}

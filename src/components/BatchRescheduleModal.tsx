@@ -1,14 +1,17 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import { AccessibleModal } from './AccessibleModal';
+
+import React, { useState, useMemo, useEffect } from 'react';
 import { useApp } from '@/context/AppContext';
 import { Lesson } from '@/types';
-import { 
-  Clock, 
-  Calendar, 
-  CheckCircle2, 
-  X, 
-  Sparkles, 
+import { getTeacherAvailableSlots, lessonTimesOverlap } from '@/utils/availability';
+import { formatTime12h } from '@/utils/timeFormat';
+import {
+  Calendar,
+  CheckCircle2,
+  X,
+  Sparkles,
   Check,
   ChevronRight,
   ChevronLeft,
@@ -34,24 +37,44 @@ const getDayNameArFromDate = (dateStr: string): string => {
   return 'الإثنين';
 };
 
+const formatLocalDate = (date: Date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+
+function getNextDateForWeekday(dayNameAr: string, offsetWeeks = 0): string {
+  const targetDayIndex = WEEKDAYS_AR.indexOf(dayNameAr);
+  const dt = new Date();
+  dt.setDate(dt.getDate() + 1);
+  while (dt.getDay() !== targetDayIndex) dt.setDate(dt.getDate() + 1);
+  dt.setDate(dt.getDate() + offsetWeeks * 7);
+  return formatLocalDate(dt);
+}
+
+function getAvailabilityWindow() {
+  const fromDate = new Date();
+  fromDate.setDate(fromDate.getDate() + 1);
+  const from = formatLocalDate(fromDate);
+  fromDate.setDate(fromDate.getDate() + 120);
+  return { from, to: formatLocalDate(fromDate) };
+}
+
 interface AffectedDayGroup {
   originalDayAr: string;
   lessons: Lesson[];
 }
 
 export function BatchRescheduleModal({ isOpen, onClose }: BatchRescheduleModalProps) {
-  const { 
-    language, 
-    lessons, 
-    rescheduleLesson, 
-    student, 
-    currentUser, 
+  const {
+    language,
+    lessons,
+    rescheduleLessons,
+    student,
+    currentUser,
     teachers,
-    plans 
+    plans
   } = useApp();
 
   const isAr = language === 'ar';
   const currentStudentId = currentUser?.id || student.id;
+  const classDuration = plans.find(plan => plan.id === student.activePlanId)?.lessonDurationMinutes || 5;
 
   const assignedTeacher = useMemo(() => {
     return teachers.find(t => t.id === student.assignedTeacherId) || teachers[0];
@@ -64,19 +87,10 @@ export function BatchRescheduleModal({ isOpen, onClose }: BatchRescheduleModalPr
   }, [assignedTeacher]);
 
   const teacherSlots = useMemo(() => {
-    if (assignedTeacher.availableSlots && assignedTeacher.availableSlots.length > 0) {
-      return assignedTeacher.availableSlots;
-    }
-    const s = parseInt((assignedTeacher.workingHoursStart || '12:00').split(':')[0], 10);
-    const e = parseInt((assignedTeacher.workingHoursEnd || '18:00').split(':')[0], 10);
-    const slots: string[] = [];
-    for (let h = s; h < e; h++) {
-      const pad = h < 10 ? `0${h}` : `${h}`;
-      slots.push(`${pad}:00`);
-      slots.push(`${pad}:30`);
-    }
-    return slots.length > 0 ? slots : ['12:00', '12:30', '13:00', '13:30', '14:00', '14:30', '15:00', '15:30'];
-  }, [assignedTeacher]);
+    return Array.from(new Set(teacherWorkingDays.flatMap(day => getTeacherAvailableSlots(assignedTeacher, day, classDuration)))).sort();
+  }, [assignedTeacher, teacherWorkingDays, classDuration]);
+
+  const slotsForDay = (day: string) => getTeacherAvailableSlots(assignedTeacher, day, classDuration);
 
   const teacherBookedSlots = useMemo(() => {
     const set = new Set<string>();
@@ -98,8 +112,8 @@ export function BatchRescheduleModal({ isOpen, onClose }: BatchRescheduleModalPr
 
   // Filter STRICTLY for cancelled regular lessons belonging to the logged in student in current active cycle
   const affectedLessons = useMemo(() => {
-    const allCancelled = lessons.filter(l => 
-      (l.studentId === currentStudentId || 
+    const allCancelled = lessons.filter(l =>
+      (l.studentId === currentStudentId ||
        (currentUser?.email && l.studentId === currentUser.email.toLowerCase())) &&
       l.status === 'CANCELLED' &&
       !l.isOrientationSession
@@ -131,9 +145,16 @@ export function BatchRescheduleModal({ isOpen, onClose }: BatchRescheduleModalPr
   // { 'الإثنين': { replacementDayAr: 'الثلاثاء', replacementTime: '14:00' } }
   const [daySelections, setDaySelections] = useState<Record<string, { replacementDayAr: string; replacementTime: string }>>(() => {
     const initialMap: Record<string, { replacementDayAr: string; replacementTime: string }> = {};
+    const usedTimesByDay: Record<string, string[]> = {};
     affectedDayGroups.forEach((group, idx) => {
       const targetRepDay = teacherWorkingDays[idx % teacherWorkingDays.length] || 'الإثنين';
-      const targetRepTime = teacherSlots[idx % teacherSlots.length] || '12:00';
+      const daySlots = slotsForDay(targetRepDay);
+      const targetRepTime = daySlots.find(slot => !teacherBookedSlots.has(slot) &&
+        !lessons.some(lesson => lesson.teacherId === assignedTeacher.id && lesson.status === 'SCHEDULED' &&
+          getDayNameArFromDate(lesson.date) === targetRepDay &&
+          lessonTimesOverlap(slot, classDuration, lesson.time, lesson.durationMinutes || classDuration)) &&
+        !(usedTimesByDay[targetRepDay] || []).some(used => lessonTimesOverlap(slot, classDuration, used, classDuration))) || '';
+      if (targetRepTime) (usedTimesByDay[targetRepDay] ||= []).push(targetRepTime);
       initialMap[group.originalDayAr] = {
         replacementDayAr: targetRepDay,
         replacementTime: targetRepTime
@@ -143,14 +164,72 @@ export function BatchRescheduleModal({ isOpen, onClose }: BatchRescheduleModalPr
   });
 
   const [isSuccess, setIsSuccess] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [rescheduleError, setRescheduleError] = useState('');
+  const [availabilityResult, setAvailabilityResult] = useState<{ key: string; occupied: { date: string; time: string; durationMinutes: number }[]; error?: string }>({ key: '', occupied: [] });
+  const availabilityWindow = getAvailabilityWindow();
+  const availabilityKey = `${assignedTeacher.id}:${availabilityWindow.from}:${availabilityWindow.to}`;
+  const availabilityLoading = isOpen && availabilityResult.key !== availabilityKey;
+  const availabilityError = availabilityResult.key === availabilityKey ? availabilityResult.error || '' : '';
+  const occupiedLessons = availabilityResult.key === availabilityKey && !availabilityResult.error ? availabilityResult.occupied : [];
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const controller = new AbortController();
+    fetch(`/api/teachers/availability?teacherId=${encodeURIComponent(assignedTeacher.id)}&from=${availabilityWindow.from}&to=${availabilityWindow.to}`, {
+      cache: 'no-store', signal: controller.signal,
+    }).then(async response => {
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || 'Unable to load availability.');
+      setAvailabilityResult({ key: availabilityKey, occupied: Array.isArray(result.occupied) ? result.occupied : [] });
+    }).catch(error => {
+      if (error instanceof DOMException && error.name === 'AbortError') return;
+      setAvailabilityResult({
+        key: availabilityKey,
+        occupied: [],
+        error: isAr ? 'تعذر تحميل جدول المعلم. حدّث الجدول قبل إعادة الجدولة.' : 'Could not load the teacher’s schedule. Refresh before rescheduling.',
+      });
+    });
+    return () => controller.abort();
+  }, [isOpen, availabilityKey, availabilityWindow.from, availabilityWindow.to, assignedTeacher.id, isAr]);
 
   if (!isOpen) return null;
 
   const currentGroup = affectedDayGroups[activeGroupIndex] || affectedDayGroups[0];
+  const currentSelection = currentGroup ? daySelections[currentGroup.originalDayAr] : undefined;
+  const currentRepDay = currentSelection?.replacementDayAr || teacherWorkingDays[0] || '';
+  const isGroupSlotAvailable = (group: AffectedDayGroup, day: string, time: string, selections = daySelections) => {
+    if (!time || teacherBookedSlots.has(time)) return false;
+    const dates = group.lessons.map((_, index) => getNextDateForWeekday(day, index));
+    for (let index = 0; index < group.lessons.length; index++) {
+      const lesson = group.lessons[index];
+      const date = dates[index];
+      const duration = lesson.durationMinutes || classDuration;
+      const conflictsWithExisting = occupiedLessons.some(existing => existing.date === date &&
+        lessonTimesOverlap(time, duration, existing.time, existing.durationMinutes || duration)) ||
+        lessons.some(existing => existing.teacherId === assignedTeacher.id && existing.status === 'SCHEDULED' &&
+          existing.date === date && existing.id !== lesson.id && lessonTimesOverlap(time, duration, existing.time, existing.durationMinutes || duration));
+      if (conflictsWithExisting) return false;
+      const conflictsWithOtherSelection = affectedDayGroups.some(other => {
+        if (other.originalDayAr === group.originalDayAr) return false;
+        const selection = selections[other.originalDayAr];
+        if (!selection?.replacementTime || selection.replacementDayAr !== day) return false;
+        return other.lessons.some((otherLesson, otherIndex) => dates[ index ] === getNextDateForWeekday(day, otherIndex) &&
+          lessonTimesOverlap(time, duration, selection.replacementTime, otherLesson.durationMinutes || classDuration));
+      });
+      if (conflictsWithOtherSelection) return false;
+    }
+    return true;
+  };
+  const hasInvalidSelection = affectedDayGroups.some(group => {
+    const selection = daySelections[group.originalDayAr];
+    if (!selection?.replacementTime || !slotsForDay(selection.replacementDayAr).includes(selection.replacementTime)) return true;
+    return !isGroupSlotAvailable(group, selection.replacementDayAr, selection.replacementTime);
+  });
 
   const handleUpdateGroupSelection = (
-    targetOriginalDayAr: string, 
-    field: 'replacementDayAr' | 'replacementTime', 
+    targetOriginalDayAr: string,
+    field: 'replacementDayAr' | 'replacementTime',
     value: string
   ) => {
     setDaySelections(prev => {
@@ -161,7 +240,14 @@ export function BatchRescheduleModal({ isOpen, onClose }: BatchRescheduleModalPr
       };
 
       const newDay = field === 'replacementDayAr' ? value : currentSel.replacementDayAr;
-      const newTime = field === 'replacementTime' ? value : currentSel.replacementTime;
+      const daySlots = slotsForDay(newDay);
+      const targetGroup = affectedDayGroups.find(group => group.originalDayAr === targetOriginalDayAr);
+      const isTaken = (slot: string) => !targetGroup || !isGroupSlotAvailable(targetGroup, newDay, slot, updated);
+      const newTime = field === 'replacementTime'
+        ? value
+        : daySlots.includes(currentSel.replacementTime) && !isTaken(currentSel.replacementTime)
+          ? currentSel.replacementTime
+          : daySlots.find(slot => !isTaken(slot)) || '';
 
       updated[targetOriginalDayAr] = {
         replacementDayAr: newDay,
@@ -174,12 +260,11 @@ export function BatchRescheduleModal({ isOpen, onClose }: BatchRescheduleModalPr
         if (g.originalDayAr !== targetOriginalDayAr) {
           const otherSel = updated[g.originalDayAr];
           if (otherSel && otherSel.replacementDayAr === newDay && otherSel.replacementTime === newTime) {
-            const takenTimesOnNewDay = new Set(
+            const takenTimesOnNewDay =
               Object.entries(updated)
                 .filter(([dayKey, sel]) => dayKey !== g.originalDayAr && sel.replacementDayAr === newDay)
-                .map(([_, sel]) => sel.replacementTime)
-            );
-            const freeSlot = teacherSlots.find(slot => !takenTimesOnNewDay.has(slot)) || teacherSlots[0];
+                .map(([, selection]) => selection.replacementTime)
+            const freeSlot = daySlots.find(slot => !takenTimesOnNewDay.some(taken => lessonTimesOverlap(slot, classDuration, taken, classDuration))) || '';
             updated[g.originalDayAr] = {
               replacementDayAr: newDay,
               replacementTime: freeSlot
@@ -190,20 +275,22 @@ export function BatchRescheduleModal({ isOpen, onClose }: BatchRescheduleModalPr
 
       return updated;
     });
+    setRescheduleError('');
   };
 
   const handleAutoAssignAllGroups = () => {
     const newMap: Record<string, { replacementDayAr: string; replacementTime: string }> = {};
-    const takenSlotsPerDay: Record<string, Set<string>> = {};
-
+    const takenSlotsPerDay: Record<string, string[]> = {};
     affectedDayGroups.forEach((group, idx) => {
       const repDay = teacherWorkingDays[idx % teacherWorkingDays.length] || 'الإثنين';
       if (!takenSlotsPerDay[repDay]) {
-        takenSlotsPerDay[repDay] = new Set();
+        takenSlotsPerDay[repDay] = [];
       }
 
-      const freeSlot = teacherSlots.find(slot => !takenSlotsPerDay[repDay].has(slot)) || teacherSlots[0];
-      takenSlotsPerDay[repDay].add(freeSlot);
+      const daySlots = slotsForDay(repDay);
+      const freeSlot = daySlots.find(slot => !takenSlotsPerDay[repDay].some(taken => lessonTimesOverlap(slot, classDuration, taken, classDuration)) &&
+        isGroupSlotAvailable(group, repDay, slot, newMap)) || '';
+      if (freeSlot) takenSlotsPerDay[repDay].push(freeSlot);
 
       newMap[group.originalDayAr] = {
         replacementDayAr: repDay,
@@ -211,28 +298,16 @@ export function BatchRescheduleModal({ isOpen, onClose }: BatchRescheduleModalPr
       };
     });
     setDaySelections(newMap);
+    setRescheduleError('');
   };
 
-  // Helper to generate next date for a weekday
-  const getNextDateForWeekday = (dayNameAr: string, offsetWeeks: number = 0): string => {
-    const targetDayIndex = WEEKDAYS_AR.indexOf(dayNameAr);
-    let dt = new Date();
-    dt.setDate(dt.getDate() + 1);
-    while (dt.getDay() !== targetDayIndex) {
-      dt.setDate(dt.getDate() + 1);
-    }
-    if (offsetWeeks > 0) {
-      dt.setDate(dt.getDate() + offsetWeeks * 7);
-    }
-    const yyyy = dt.getFullYear();
-    const mm = String(dt.getMonth() + 1).padStart(2, '0');
-    const dd = String(dt.getDate()).padStart(2, '0');
-    return `${yyyy}-${mm}-${dd}`;
-  };
-
-  const handleSaveAll = (e: React.FormEvent) => {
+  const handleSaveAll = async (e: React.FormEvent) => {
     e.preventDefault();
-
+    if (availabilityLoading || availabilityError || hasInvalidSelection) {
+      setRescheduleError(isAr ? 'تحقق من الأوقات المتاحة واختر مواعيد غير متداخلة.' : 'Check availability and choose replacement times that do not overlap.');
+      return;
+    }
+    const updates: { lessonId: string; date: string; time: string }[] = [];
     affectedDayGroups.forEach(group => {
       const sel = daySelections[group.originalDayAr] || {
         replacementDayAr: teacherWorkingDays[0],
@@ -242,9 +317,21 @@ export function BatchRescheduleModal({ isOpen, onClose }: BatchRescheduleModalPr
       // Reschedule each lesson in this day group to the replacement day & time across weeks
       group.lessons.forEach((l, lessonIdx) => {
         const targetDate = getNextDateForWeekday(sel.replacementDayAr, lessonIdx);
-        rescheduleLesson(l.id, targetDate, sel.replacementTime);
+        updates.push({ lessonId: l.id, date: targetDate, time: sel.replacementTime });
       });
     });
+
+    if (hasInvalidSelection || updates.some(update => !update.time)) {
+      setRescheduleError(isAr ? 'اختر وقتاً متاحاً لكل يوم، وتأكد من عدم تداخل المواعيد البديلة.' : 'Choose an available time for each day and make sure replacement classes do not overlap.');
+      return;
+    }
+    setIsSaving(true);
+    const saved = await rescheduleLessons(updates);
+    setIsSaving(false);
+    if (!saved) {
+      setRescheduleError(isAr ? 'تعذر حفظ المواعيد. قد يكون أحد الأوقات حُجز للتو؛ حدّث الجدول وحاول مرة أخرى.' : 'Could not save the schedule. A time may have just been booked; refresh and try again.');
+      return;
+    }
 
     setIsSuccess(true);
     setTimeout(() => {
@@ -254,9 +341,9 @@ export function BatchRescheduleModal({ isOpen, onClose }: BatchRescheduleModalPr
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in">
-      <div className="bg-white w-full max-w-2xl rounded-3xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[92vh]">
-        
+    <AccessibleModal onClose={onClose} aria-label={isAr ? "إعادة جدولة الحصص" : "Reschedule classes"} className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in">
+      <div aria-labelledby="reschedule-modal-title" className="bg-white w-full max-w-2xl rounded-3xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[92vh]">
+
         {/* HEADER */}
         <div className="bg-gradient-to-r from-emerald-950 via-teal-900 to-emerald-900 p-6 text-white flex items-center justify-between shrink-0">
           <div className="flex items-center gap-3.5">
@@ -272,7 +359,7 @@ export function BatchRescheduleModal({ isOpen, onClose }: BatchRescheduleModalPr
                   {isAr ? `تعديل (${affectedDayGroups.length}) أيام متأثرة` : `${affectedDayGroups.length} affected days`}
                 </span>
               </div>
-              <h3 className="text-lg font-black mt-1">
+              <h3 id="reschedule-modal-title" className="text-lg font-black mt-1">
                 {isAr ? 'إعادة جدولة الأيام المتأثرة' : 'Reschedule Affected Days'}
               </h3>
             </div>
@@ -280,6 +367,7 @@ export function BatchRescheduleModal({ isOpen, onClose }: BatchRescheduleModalPr
 
           <button
             onClick={onClose}
+            aria-label={isAr ? 'إغلاق إعادة الجدولة' : 'Close rescheduling dialog'}
             className="w-9 h-9 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition-colors cursor-pointer"
           >
             <X className="w-5 h-5" />
@@ -372,7 +460,7 @@ export function BatchRescheduleModal({ isOpen, onClose }: BatchRescheduleModalPr
                   {/* FOCUSED AFFECTED DAY CARD */}
                   {currentGroup && (
                     <div className="bg-slate-50/80 p-6 rounded-3xl border border-slate-200 space-y-5 animate-in fade-in">
-                      
+
                       {/* Affected Day Header */}
                       <div className="flex items-center justify-between border-b border-slate-200/80 pb-3">
                         <div className="flex items-center gap-3">
@@ -422,30 +510,42 @@ export function BatchRescheduleModal({ isOpen, onClose }: BatchRescheduleModalPr
                         </div>
                       </div>
 
-                      {/* 30-MIN TIME SLOTS FOR REPLACEMENT DAY */}
+                      {/* Available five-minute start times for the replacement day */}
                       <div className="space-y-2 pt-1">
                         <label className="block text-xs font-bold text-slate-700 flex items-center justify-between">
-                          <span>{isAr ? '2. حدد التوقيت البديل (30 دقيقة):' : '2. Select Replacement Time Slot:'}</span>
+                          <span>{isAr ? `2. حدد التوقيت البديل (${plans.find(p => p.id === student.activePlanId)?.lessonDurationMinutes || plans[0].lessonDurationMinutes} دقائق):` : `2. Select a replacement time (${plans.find(p => p.id === student.activePlanId)?.lessonDurationMinutes || plans[0].lessonDurationMinutes} minutes):`}</span>
                           <span className="text-[11px] text-slate-400 font-semibold">{isAr ? 'ساعات دوام المعلم' : 'Scholar Hours'}</span>
                         </label>
 
-                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                          {teacherSlots.map(slot => {
+                        {availabilityLoading && <p role="status" className="text-xs text-slate-500">{isAr ? 'جارٍ التحقق من حجوزات المعلم…' : 'Checking the teacher’s bookings…'}</p>}
+                        {availabilityError && <p role="alert" className="text-xs font-medium text-red-700">{availabilityError}</p>}
+
+                        {slotsForDay(currentRepDay).length === 0 ? (
+                          <p className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+                            {isAr ? 'لا توجد أوقات تكفي لمدة هذه الحصة في هذا اليوم.' : 'No time windows on this day fit this class duration.'}
+                          </p>
+                        ) : <div className="grid max-h-56 grid-cols-2 gap-2 overflow-y-auto rounded-xl p-1 sm:grid-cols-4">
+                          {slotsForDay(currentRepDay).map(slot => {
                             const curSel = daySelections[currentGroup.originalDayAr];
-                            const currentRepDay = curSel?.replacementDayAr || teacherWorkingDays[0];
                             const isSelected = curSel?.replacementTime === slot;
-                            const repDate = getNextDateForWeekday(currentRepDay);
-                            const isTeacherBooked = teacherBookedSlots.has(`${repDate}_${slot}`) || teacherBookedSlots.has(slot);
+                            const isTeacherBooked = teacherBookedSlots.has(slot) || currentGroup.lessons.some((lesson, index) => {
+                              const date = getNextDateForWeekday(currentRepDay, index);
+                              const duration = lesson.durationMinutes || classDuration;
+                              return occupiedLessons.some(existing => existing.date === date && lessonTimesOverlap(slot, duration, existing.time, existing.durationMinutes || duration)) ||
+                                lessons.some(existing => existing.teacherId === assignedTeacher.id && existing.status === 'SCHEDULED' && existing.date === date &&
+                                  existing.id !== lesson.id && lessonTimesOverlap(slot, duration, existing.time, existing.durationMinutes || duration));
+                            });
 
                             // Check if this slot on the currentRepDay is taken by any OTHER affected day group
                             const takenByOtherGroup = affectedDayGroups.find(g => {
                               if (g.originalDayAr === currentGroup.originalDayAr) return false;
                               const otherSel = daySelections[g.originalDayAr];
-                              return otherSel && otherSel.replacementDayAr === currentRepDay && otherSel.replacementTime === slot;
+                              return otherSel && otherSel.replacementDayAr === currentRepDay &&
+                                lessonTimesOverlap(otherSel.replacementTime, classDuration, slot, classDuration);
                             });
 
                             const isTakenByOther = Boolean(takenByOtherGroup);
-                            const isDisabled = isTakenByOther || isTeacherBooked;
+                            const isDisabled = availabilityLoading || Boolean(availabilityError) || isTakenByOther || isTeacherBooked;
 
                             return (
                               <button
@@ -461,7 +561,7 @@ export function BatchRescheduleModal({ isOpen, onClose }: BatchRescheduleModalPr
                                     : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100 cursor-pointer'
                                 }`}
                               >
-                                <span>{slot} {isAr ? 'م' : 'PM'}</span>
+                                <span>{formatTime12h(slot, isAr)}</span>
                                 {isTeacherBooked ? (
                                   <span className="text-[9px] font-black text-rose-800 bg-rose-100/80 px-1.5 py-0.2 rounded">
                                     {isAr ? 'محجوز مع معلمك' : 'Booked'}
@@ -474,7 +574,8 @@ export function BatchRescheduleModal({ isOpen, onClose }: BatchRescheduleModalPr
                               </button>
                             );
                           })}
-                        </div>
+                        </div>}
+                        {rescheduleError && <p role="alert" className="text-sm text-red-700">{rescheduleError}</p>}
                       </div>
 
                       {/* STEP NAVIGATION BUTTONS */}
@@ -532,16 +633,17 @@ export function BatchRescheduleModal({ isOpen, onClose }: BatchRescheduleModalPr
               <button
                 type="button"
                 onClick={handleSaveAll}
-                className="px-6 py-2.5 rounded-xl gold-gradient-bg text-emerald-950 font-black text-xs shadow-md hover:brightness-105 transition-all flex items-center gap-2 cursor-pointer"
+                disabled={isSaving || availabilityLoading || Boolean(availabilityError) || hasInvalidSelection}
+                className="px-6 py-2.5 rounded-xl gold-gradient-bg text-emerald-950 font-black text-xs shadow-md hover:brightness-105 transition-all flex items-center gap-2 cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <Check className="w-4 h-4 stroke-[3]" />
-                <span>{isAr ? `تثبيت مواعيد الأيام الجديدة (${affectedLessons.length} حصص)` : `Confirm All Days (${affectedLessons.length})`}</span>
+                <span>{isSaving ? (isAr ? 'جارٍ الحفظ…' : 'Saving…') : (isAr ? `تثبيت مواعيد الأيام الجديدة (${affectedLessons.length} حصص)` : `Confirm All Days (${affectedLessons.length})`)}</span>
               </button>
             </div>
           </div>
         )}
 
       </div>
-    </div>
+    </AccessibleModal>
   );
 }

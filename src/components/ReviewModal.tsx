@@ -1,42 +1,56 @@
 'use client';
 
+import { AccessibleModal } from './AccessibleModal';
+
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { X, Star, MessageSquare, CheckCircle2 } from 'lucide-react';
 
 interface ReviewModalProps {
   teacherId: string;
+  lessonId: string;
   teacherName: string;
   onClose: () => void;
+  initialReview?: { rating: number; commentAr: string; commentEn: string };
 }
 
-export const ReviewModal: React.FC<ReviewModalProps> = ({ teacherId, teacherName, onClose }) => {
+export const ReviewModal: React.FC<ReviewModalProps> = ({ teacherId, lessonId, teacherName, onClose, initialReview }) => {
   const { language, addReview } = useApp();
   const isAr = language === 'ar';
 
-  const [rating, setRating] = useState(5);
+  const [rating, setRating] = useState(initialReview?.rating || 5);
   const [hoverRating, setHoverRating] = useState(0);
-  const [comment, setComment] = useState('');
+  const [comment, setComment] = useState(initialReview ? (isAr ? initialReview.commentAr : initialReview.commentEn) : '');
   const [submitted, setSubmitted] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!comment.trim()) return;
+    if (!comment.trim() || saving) return;
+    setSaving(true);
 
-    addReview(teacherId, rating, comment, comment);
-    setSubmitted(true);
+    setErrorMessage('');
+    try {
+      await addReview(teacherId, lessonId, rating, comment, comment);
+      setSubmitted(true);
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : 'Unable to submit review.');
+    } finally { setSaving(false); }
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+    <AccessibleModal onClose={onClose} aria-label={isAr ? "تقييم الحصة" : "Lesson review"} className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
       <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-100 relative">
         <button
           onClick={onClose}
+          aria-label={isAr ? "إغلاق التقييم" : "Close review"}
           className="absolute top-4 left-4 text-slate-400 hover:text-slate-700 p-2 rounded-full hover:bg-slate-100 transition-colors"
         >
           <X className="w-5 h-5" />
         </button>
 
+        {errorMessage && <p role="alert" className="text-xs text-rose-700 font-bold mb-3">{errorMessage}</p>}
         {!submitted ? (
           <div>
             <div className="text-center mb-6">
@@ -53,10 +67,13 @@ export const ReviewModal: React.FC<ReviewModalProps> = ({ teacherId, teacherName
 
             <form onSubmit={handleSubmit} className="space-y-4">
               {/* Star Picker */}
-              <div className="flex justify-center items-center gap-2 py-2">
+              <div role="radiogroup" aria-label={isAr ? 'التقييم' : 'Rating'} className="flex justify-center items-center gap-2 py-2">
                 {[1, 2, 3, 4, 5].map((star) => (
                   <button
                     key={star}
+                    aria-label={isAr ? `تقييم ${star} من 5` : `Rate ${star} out of 5`}
+                    role="radio" aria-checked={rating === star} tabIndex={rating === star ? 0 : -1}
+                    onKeyDown={event => { if (['ArrowRight', 'ArrowUp', 'ArrowLeft', 'ArrowDown'].includes(event.key)) { event.preventDefault(); const next = Math.min(5, Math.max(1, star + (['ArrowRight','ArrowUp'].includes(event.key) ? 1 : -1))); setRating(next); const buttons = event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>('button'); buttons?.[next - 1]?.focus(); } }}
                     type="button"
                     onClick={() => setRating(star)}
                     onMouseEnter={() => setHoverRating(star)}
@@ -76,16 +93,16 @@ export const ReviewModal: React.FC<ReviewModalProps> = ({ teacherId, teacherName
 
               {/* Comment Input */}
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                <label htmlFor="review-comment" className="block text-xs font-bold text-slate-700 mb-1.5">
                   {isAr ? 'ملاحظاتك وتقييمك الشخصي:' : 'Your Feedback:'}
                 </label>
-                <textarea
+                <textarea id="review-comment"
                   rows={4}
                   value={comment}
                   onChange={(e) => setComment(e.target.value)}
                   placeholder={
-                    isAr 
-                      ? 'اذكر أثر الحصة وطريقة الشرح وتوجيهات المعلم...' 
+                    isAr
+                      ? 'اذكر أثر الحصة وطريقة الشرح وتوجيهات المعلم...'
                       : 'Share your thoughts on teaching methodology and guidance...'
                   }
                   required
@@ -95,10 +112,11 @@ export const ReviewModal: React.FC<ReviewModalProps> = ({ teacherId, teacherName
 
               <button
                 type="submit"
+                disabled={saving}
                 className="w-full py-3.5 rounded-2xl gold-gradient-bg text-emerald-950 font-extrabold text-xs shadow-md hover:brightness-105 transition-all flex items-center justify-center gap-2 cursor-pointer"
               >
                 <MessageSquare className="w-4 h-4" />
-                <span>{isAr ? 'إرسال التقييم' : 'Submit Review'}</span>
+                <span>{saving ? (isAr ? 'جارٍ الحفظ...' : 'Saving…') : initialReview ? (isAr ? 'حفظ التقييم' : 'Save Review') : (isAr ? 'إرسال التقييم' : 'Submit Review')}</span>
               </button>
             </form>
           </div>
@@ -122,6 +140,6 @@ export const ReviewModal: React.FC<ReviewModalProps> = ({ teacherId, teacherName
           </div>
         )}
       </div>
-    </div>
+    </AccessibleModal>
   );
 };

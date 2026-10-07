@@ -1,43 +1,25 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
+import { useRouter } from 'next/navigation';
 import { useApp } from '@/context/AppContext';
+import { formatAvailabilityRanges } from '@/utils/timeFormat';
+import { PublicNavbar } from '@/components/PublicNavbar';
+import { PublicFooter } from '@/components/PublicFooter';
 import { PlansGrid } from '@/components/PlansGrid';
-import { QURAN_SURAHS, QURAN_JUZ_LIST } from '@/data/quranData';
-import { 
-  User, 
-  LogIn, 
-  GraduationCap, 
-  ShieldCheck, 
-  Video, 
-  Clock, 
-  BookOpen, 
-  Calendar, 
-  CheckCircle2, 
-  ChevronDown, 
-  ChevronUp, 
-  Target, 
-  Award, 
-  CreditCard,
-  Building2,
-  HelpCircle,
+import { QURAN_SURAHS } from '@/data/quranData';
+import {
+  User,
+  GraduationCap,
+  ShieldCheck,
+  Clock,
+  CheckCircle2,
+  ChevronDown,
+  ChevronUp,
   ArrowRight,
-  ArrowLeft,
-  Check,
-  Globe,
-  Sliders,
-  FileCheck,
-  Search,
-  Users,
-  Play,
-  Volume2,
-  Bookmark,
-  Sparkles,
-  Layers,
-  ChevronRight,
-  ChevronLeft as ChevronLeftIcon
+  Sliders
 } from 'lucide-react';
 
 interface FaqItem {
@@ -49,45 +31,59 @@ interface FaqItem {
 
 const FAQS: FaqItem[] = [
   {
-    questionAr: 'هل الحصص في منصة سَنَد فردية أم جماعية؟',
-    questionEn: 'Are sessions on Sanad 1-on-1 private or group classes?',
-    answerAr: 'جميع الحصص في منصة سَنَد هي حصص فردية مباشرة (1:1) تجمع الطالب بالمعلم المجاز عبر Google Meet لضمان أعلى درجات التركيز والتصحيح الصوتي الدقيق.',
-    answerEn: 'All sessions on Sanad are 1-on-1 private live classes between the student and certified scholar via Google Meet for maximum focus and acoustic accuracy.'
+    questionAr: 'هل الحصص فردية؟',
+    questionEn: 'Are lessons one to one?',
+    answerAr: 'نعم، تلتقي في كل حصة بمعلّمك مباشرة عبر Google Meet.',
+    answerEn: 'Yes. Each lesson is a live, one-to-one session with your teacher on Google Meet.'
   },
   {
-    questionAr: 'كيف يعمل باني الخطة القرآنية التلقائي؟',
-    questionEn: 'How does the automated Quran Plan Builder work?',
-    answerAr: 'يقوم باني الخطة الذكي بحساب عدد الآيات والصفحات بناءً على السور أو الأجزاء المستهدفة ونوع المسار، وتوزيعها بالتساوي على حصص الشهر المجدولة لمنع التراكم وتيسير الحفظ.',
-    answerEn: 'The plan engine calculates the exact pages and ayahs based on your selected Surahs or Juz, distributing them evenly across your scheduled monthly lessons.'
+    questionAr: 'كيف أخطّط للحفظ أو المراجعة؟',
+    questionEn: 'How do I plan memorization or revision?',
+    answerAr: 'اختر السورة وعدد حصصك الأسبوعية في أداة التخطيط للاطّلاع على تقسيم مقترح. يمكنك تعديل خطتك بما يناسبك.',
+    answerEn: 'Choose a surah and how often you want lessons in the planning tool to see a suggested breakdown. Adjust it to suit your pace.'
   },
   {
-    questionAr: 'ما هي آلية دفع الاشتراكات الشهرية؟',
-    questionEn: 'How do subscription payments work?',
-    answerAr: 'الاشتراكات شهرية ثابتة بالريال السعودي. يتم سداد الرسوم عبر التحويل البنكي المباشر لحساب مصرف الراجحي المعتمد للمنصة، ثم رفع صورة الإيصال ليتم اعتماد الحساب وتفعيل الجدول.',
-    answerEn: 'Subscriptions are fixed 1-month plans in SAR. Transfer the fee to the official Al Rajhi Bank IBAN and upload your receipt for instant account and timetable activation.'
+    questionAr: 'كيف أشترك في الحصص؟',
+    questionEn: 'How do I sign up for lessons?',
+    answerAr: 'اختر الباقة المناسبة لك من صفحة الأسعار، ثم اتبع خطوات التسجيل والدفع الظاهرة في حسابك.',
+    answerEn: 'Choose a plan on the pricing page, then follow the registration and payment steps in your account.'
   },
   {
-    questionAr: 'هل يمكن إعادة جدولة موعد حصة أو شراء حصص إضافية؟',
-    questionEn: 'Can I reschedule a class or purchase extra lessons?',
-    answerAr: 'نعم، تتيح المنصة إعادة جدولة أي حصة قادمة إلى موعد آخر متاح مع المعلم بنقرة واحدة، كما يمكن شراء حصص إضافية فردية بسعر 20 ر.س للحصة في أي وقت.',
-    answerEn: 'Yes. You can reschedule upcoming classes without conflicts, and purchase extra individual lessons for 20 SAR each at any time.'
+    questionAr: 'هل يمكنني تغيير موعد الحصة؟',
+    questionEn: 'Can I change a lesson time?',
+    answerAr: 'تواصل مع معلّمك لترتيب موعد آخر يناسبكما. تظهر مواعيد حصصك في جدولك.',
+    answerEn: 'Contact your teacher to arrange another time that works for both of you. Your lessons appear in your schedule.'
   },
   {
-    questionAr: 'من هم المعلمون في المنصة وكيف يتم اعتمادهم؟',
-    questionEn: 'Who are the instructors and how are they vetted?',
-    answerAr: 'تضم المنصة معلمين ومقرئين معتمدين يحملون إجازات موثقة بالسند المتصل إلى النبي ﷺ برواية حفص عن عاصم والقراءات العشر، وتتم مراجعة إجازاتهم واعتمادها بدقة من إدارة المنصة.',
-    answerEn: 'Our faculty consists of certified scholars holding authentic sanad chains back to Prophet Muhammad ﷺ, verified through admin credentials assessment.'
+    questionAr: 'كيف أختار معلّماً؟',
+    questionEn: 'How do I choose a teacher?',
+    answerAr: 'تصفّح ملفات المعلّمين وإجازاتهم، ثم اختر المعلّم الذي يناسب هدفك ومواعيدك.',
+    answerEn: 'Browse teacher profiles and qualifications, then choose someone who fits your goals and schedule.'
   }
 ];
 
 export default function NewLandingPage() {
-  const { language, toggleLanguage, plans, teachers } = useApp();
+  const router = useRouter();
+  const { language, teachers, currentUser, isHydrated } = useApp();
   const isAr = language === 'ar';
+
+  useEffect(() => {
+    if (!isHydrated || !currentUser) return;
+
+    const dashboardByRole = {
+      ADMIN: '/admin/dashboard',
+      TEACHER: '/teacher/dashboard',
+      STUDENT: '/student/dashboard',
+      GUEST: '/student/dashboard',
+    } as const;
+
+    router.replace(dashboardByRole[currentUser.role]);
+  }, [currentUser, isHydrated, router]);
 
   // INTERACTIVE CURRICULUM SIMULATOR STATE
   const [simulatorTrack, setSimulatorTrack] = useState<'HIFZ' | 'TIKRAAR' | 'TAJWEED'>('HIFZ');
   const [selectedSurahNumber, setSelectedSurahNumber] = useState<number>(2); // Al-Baqarah default
-  const [weeklyFrequency, setWeeklyFrequency] = useState<number>(3); // 3 classes/week
+  const weeklyFrequency = 4; // Matches current monthly plans
 
   const selectedSurah = useMemo(() => {
     return QURAN_SURAHS.find(s => s.number === selectedSurahNumber) || QURAN_SURAHS[1];
@@ -104,115 +100,53 @@ export default function NewLandingPage() {
     setOpenFaqIndex(openFaqIndex === index ? null : index);
   };
 
-  // FACULTY TAB STATE
-  const [selectedTeacherId, setSelectedTeacherId] = useState<string>(teachers[0]?.id || 'tech-sulami');
-  const activeTeacher = useMemo(() => {
-    return teachers.find(t => t.id === selectedTeacherId) || teachers[0];
-  }, [teachers, selectedTeacherId]);
+  const enrollmentHref = `/register/student?surah=${selectedSurahNumber}&track=${simulatorTrack}`;
+  if (isHydrated && currentUser) {
+    return (
+      <div className="min-h-[70vh] flex flex-col items-center justify-center space-y-4">
+        <div className="w-12 h-12 rounded-full border-4 border-emerald-800 border-t-amber-400 animate-spin" />
+        <p className="text-xs font-bold text-slate-500">
+          {isAr ? 'جاري الانتقال إلى لوحة التحكم...' : 'Redirecting to your dashboard...'}
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-[#FDFDFD] text-slate-900 selection:bg-emerald-900 selection:text-white font-sans antialiased">
-      
-      {/* ACADEMIC TOP NAVIGATION BAR */}
-      <header className="sticky top-0 z-50 w-full border-b border-slate-200 bg-white/95 backdrop-blur-md">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-18 flex items-center justify-between">
-          
-          {/* Logo & Portal Identity */}
-          <Link href="/new-landing" className="flex items-center gap-3 group">
-            <Image
-              src="/logo.png"
-              alt="Sanad Logo"
-              width={46}
-              height={46}
-              className="h-11 w-auto object-contain"
-              priority
-            />
-            <div className="hidden sm:block">
-              <span className="text-lg font-black text-emerald-950 block leading-tight">سَنَد</span>
-              <span className="text-[10px] font-bold text-slate-500 block uppercase tracking-wider">Sanad Platform</span>
-            </div>
-          </Link>
 
-          {/* Blackboard-Style Section Links */}
-          <nav className="hidden md:flex items-center gap-8 text-xs font-extrabold text-slate-700">
-            <a href="#simulator" className="hover:text-emerald-800 transition-colors">
-              {isAr ? 'باني الخطة التفاعلي' : 'Plan Simulator'}
-            </a>
-            <a href="#tracks" className="hover:text-emerald-800 transition-colors">
-              {isAr ? 'المسارات القرآنية' : 'Study Tracks'}
-            </a>
-            <a href="#classroom" className="hover:text-emerald-800 transition-colors">
-              {isAr ? 'بيئة الحصة 1:1' : '1:1 Classroom'}
-            </a>
-            <a href="#faculty" className="hover:text-emerald-800 transition-colors">
-              {isAr ? 'هيئة المقرئين' : 'Faculty Scholars'}
-            </a>
-            <a href="#plans" className="hover:text-emerald-800 transition-colors">
-              {isAr ? 'الرسوم والاشتراكات' : 'Pricing'}
-            </a>
-            <a href="#faq" className="hover:text-emerald-800 transition-colors">
-              {isAr ? 'الأسئلة الشائعة' : 'FAQ'}
-            </a>
-          </nav>
+      <PublicNavbar />
 
-          {/* Action Hub */}
-          <div className="flex items-center gap-3">
-            <button
-              onClick={toggleLanguage}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 text-slate-700 hover:bg-slate-50 text-xs font-bold transition-all cursor-pointer"
-            >
-              <Globe className="w-3.5 h-3.5 text-emerald-800" />
-              <span>{isAr ? 'English' : 'العربية'}</span>
-            </button>
-
-            <Link
-              href="/login"
-              className="px-4 py-2 rounded-xl text-slate-700 hover:text-emerald-950 hover:bg-slate-50 text-xs font-extrabold transition-all"
-            >
-              {isAr ? 'تسجيل الدخول' : 'Sign In'}
-            </Link>
-
-            <Link
-              href="/register/student"
-              className="px-5 py-2.5 rounded-xl bg-emerald-950 hover:bg-emerald-900 text-white text-xs font-extrabold shadow-sm transition-all"
-            >
-              {isAr ? 'التسجيل في المقرأة' : 'Enroll Now'}
-            </Link>
-          </div>
-
-        </div>
-      </header>
-
-      {/* 1. HERO SECTION - MATCHING SAMPLE COMPOSITION WITH CIRCLE HALO & CONCENTRIC LINES */}
-      <section className="relative overflow-hidden bg-white border-b border-slate-200 pt-12 pb-20 lg:pt-16 lg:pb-24">
+      {/* Introduction */}
+      <section className="relative flex min-h-[calc(100svh-4rem)] items-center overflow-hidden bg-white border-b border-slate-200 pt-12 pb-20 lg:pt-16 lg:pb-24">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 lg:gap-8 items-center">
-            
+
             {/* Hero Left: Academic Heading & Value Proposition */}
             <div className="lg:col-span-7 space-y-6 text-center lg:text-start">
-              
+
               <div className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-slate-100 border border-slate-300 text-slate-800 text-xs font-extrabold">
                 <span className="w-2 h-2 rounded-full bg-emerald-600"></span>
-                <span>{isAr ? 'منصة سَنَد للتعليم القرآني بالسند المتصل' : 'Sanad Quran Learning Platform'}</span>
+                <span>{isAr ? 'تعلّم القرآن مع معلّمين مجازين' : 'Learn the Quran with qualified teachers'}</span>
               </div>
 
               <h1 className="text-3xl sm:text-5xl lg:text-[54px] font-black text-slate-950 tracking-tight leading-[1.2]">
                 {isAr ? (
                   <>
                     تعلّم القرآن الكريم وتلاوته <br className="hidden sm:block" />
-                    مع <span className="text-emerald-800 underline decoration-amber-500/80 decoration-4 underline-offset-8">نخبة المقرئين المجازين</span>
+                    مع <span className="text-emerald-800 underline decoration-amber-500/80 decoration-4 underline-offset-8">معلّمين مجازين</span>
                   </>
                 ) : (
                   <>
-                    Master Quran Recitation & Memorization with <span className="text-emerald-800">Certified Scholars</span>
+                    Learn to recite and memorize the Quran with <span className="text-emerald-800">qualified teachers</span>
                   </>
                 )}
               </h1>
 
               <p className="text-slate-600 text-sm sm:text-base lg:text-lg leading-relaxed max-w-2xl mx-auto lg:mx-0 font-normal">
                 {isAr
-                  ? 'منصة تعليمية متطورة توفر حصصاً فردية مباشرة 1:1 عبر Google Meet، مع باني خطط ذكي لحساب وتوزيع الآيات بالسورة أو الجزء وجدول تلقائي يمنع التعارض.'
-                  : 'An advanced learning management platform offering 1-on-1 private virtual classrooms via Google Meet, automated curriculum pacing, and conflict-free scheduling.'}
+                  ? 'تعلّم في حصص فردية مباشرة مع معلّمين مجازين. اختر هدفك في الحفظ أو المراجعة، وسنساعدك على تنظيم حصصك ومتابعة تقدّمك.'
+                  : 'Study one to one with qualified Quran teachers. Choose a memorization or revision goal, plan your lessons, and track your progress.'}
               </p>
 
               {/* Action Buttons */}
@@ -222,7 +156,7 @@ export default function NewLandingPage() {
                   className="px-8 py-4 rounded-xl bg-emerald-950 hover:bg-emerald-900 text-white font-extrabold text-sm shadow-md transition-all flex items-center gap-2"
                 >
                   <User className="w-4 h-4 stroke-[2.5]" />
-                  <span>{isAr ? 'التسجيل في المقرأة' : 'Enroll as Student'}</span>
+                  <span>{isAr ? 'إنشاء حساب طالب' : 'Create a student account'}</span>
                 </Link>
 
                 <a
@@ -230,39 +164,46 @@ export default function NewLandingPage() {
                   className="px-7 py-4 rounded-xl border-2 border-slate-300 hover:border-slate-400 text-slate-800 font-extrabold text-sm bg-white hover:bg-slate-50 transition-all flex items-center gap-2"
                 >
                   <Sliders className="w-4 h-4 text-emerald-800" />
-                  <span>{isAr ? 'جرّب باني الخطة الذكي' : 'Try Plan Simulator'}</span>
+                  <span>{isAr ? 'خطّط لحصصك' : 'Plan your lessons'}</span>
                 </a>
               </div>
 
               {/* Minimal Metric Tickers */}
               <div className="pt-8 border-t border-slate-200 grid grid-cols-3 gap-6 text-center lg:text-start">
                 <div className="space-y-1">
-                  <div className="text-2xl sm:text-3xl font-black text-slate-950">100%</div>
-                  <div className="text-xs font-semibold text-slate-500">{isAr ? 'حصص فردية مباشرة 1:1' : '1:1 Private Sessions'}</div>
+                  <div className="text-lg sm:text-xl font-black text-slate-950">{isAr ? 'حصص فردية' : 'Private lessons'}</div>
+                  <div className="text-xs font-semibold text-slate-500">{isAr ? 'لقاء مباشر مع معلّمك' : 'Live lessons with your teacher'}</div>
                 </div>
                 <div className="space-y-1">
-                  <div className="text-2xl sm:text-3xl font-black text-emerald-900">سند متصل</div>
-                  <div className="text-xs font-semibold text-slate-500">{isAr ? 'إجازة معتمدة إلى النبي ﷺ' : 'Connected Sanad Chains'}</div>
+                  <div className="text-lg sm:text-xl font-black text-emerald-900">{isAr ? 'معلّمون مجازون' : 'Qualified teachers'}</div>
+                  <div className="text-xs font-semibold text-slate-500">{isAr ? 'خبرة وإجازة في تعليم القرآن' : 'Experienced in Quran teaching'}</div>
                 </div>
                 <div className="space-y-1">
-                  <div className="text-2xl sm:text-3xl font-black text-slate-950">مرونة تامة</div>
-                  <div className="text-xs font-semibold text-slate-500">{isAr ? 'جدولة بدون تعارض' : 'Conflict-Free Scheduling'}</div>
+                  <div className="text-lg sm:text-xl font-black text-slate-950">{isAr ? 'حسب وقتك' : 'Your schedule'}</div>
+                  <div className="text-xs font-semibold text-slate-500">{isAr ? 'مواعيد تناسبك' : 'Choose a time that suits you'}</div>
                 </div>
               </div>
-
             </div>
 
-            {/* Hero Right: Centered Graphic Composition */}
-            <div className="lg:col-span-5 flex justify-center items-center">
-              <div className="relative w-full max-w-[380px] sm:max-w-[460px] aspect-[600/650]">
-                <Image
-                  src="/images/hero-quran-man-centered.png"
-                  alt="قارئ القرآن الكريم - منصة سَنَد"
-                  fill
-                  sizes="(max-width: 768px) 380px, 460px"
-                  className="object-contain drop-shadow-xl"
-                  priority
-                />
+            {/* Hero portrait */}
+            <div className="lg:col-span-5 flex justify-center items-center py-4 lg:py-0">
+              <div className="relative isolate flex w-full max-w-[340px] sm:max-w-[420px] aspect-square items-end justify-center overflow-hidden">
+                <div className="sanad-portrait-glow absolute inset-[14%] rounded-full" aria-hidden="true" />
+                <div className="absolute inset-[17%] overflow-hidden rounded-full bg-[radial-gradient(circle_at_35%_30%,#d1fae5_0%,#6ee7b7_42%,#047857_100%)] shadow-[0_18px_50px_rgba(6,95,70,0.18)]">
+                  <Image
+                    src="/images/hero-quran-teacher-no-scarf.png"
+                    alt={isAr ? 'معلّم يقرأ القرآن الكريم' : 'A teacher reading the Quran'}
+                    fill
+                    sizes="(max-width: 768px) 230px, 290px"
+                    className="object-contain object-center"
+                    priority
+                  />
+                </div>
+                <div className="sanad-orbit absolute inset-[10%] rounded-full border border-emerald-700/20" aria-hidden="true" />
+                <div className="sanad-orbit-reverse absolute inset-[4%] rounded-full border border-dashed border-amber-500/40" aria-hidden="true" />
+                <div className="absolute inset-[1%] rounded-full border border-slate-200/80" aria-hidden="true" />
+                <span className="absolute right-[14%] top-[24%] z-20 h-2.5 w-2.5 rounded-full bg-amber-400 shadow-[0_0_16px_rgba(251,191,36,0.65)]" aria-hidden="true" />
+                <span className="absolute bottom-[22%] left-[12%] z-20 h-2 w-2 rounded-full bg-white shadow-[0_0_12px_rgba(255,255,255,0.8)]" aria-hidden="true" />
               </div>
             </div>
 
@@ -270,33 +211,33 @@ export default function NewLandingPage() {
         </div>
       </section>
 
-      {/* 2. INTERACTIVE CURRICULUM & PLAN CALCULATOR (BLACKBOARD CORE INNOVATION) */}
-      <section id="simulator" className="py-20 bg-slate-50 border-b border-slate-200">
+      {/* Lesson planner */}
+      <section id="simulator" className="scroll-mt-20 py-20 bg-slate-50 border-b border-slate-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-12">
-          
+
           <div className="max-w-3xl space-y-2 text-center sm:text-start">
             <span className="text-xs font-extrabold uppercase tracking-widest text-emerald-800 block">
-              {isAr ? 'المحاكي التفاعلي' : 'Interactive Plan Simulator'}
+              {isAr ? 'خطّط لتعلّمك' : 'Plan your learning'}
             </span>
             <h2 className="text-2xl sm:text-3xl font-black text-slate-950">
-              {isAr ? 'جرّب باني الخطة القرآنية واحسب جدولك فوراً' : 'Simulate Your Monthly Quran Plan'}
+              {isAr ? 'وزّع هدفك على حصص الشهر' : 'Build a monthly lesson plan'}
             </h2>
             <p className="text-slate-600 text-xs sm:text-sm">
-              {isAr 
-                ? 'اختر السورة وعدد الحصص الأسبوعية وشاهد كيف يقوم النظام باحتساب الآيات والصفحات وتوزيعها على حصصك تلقائياً.' 
-                : 'Select your target Surah and class frequency to see instant daily breakdowns and completion milestones.'}
+              {isAr
+                ? 'اختر مسارك وسورتك وعدد الحصص الأسبوعية للاطّلاع على توزيع مقترح للآيات والصفحات.'
+                : 'Choose a study track, surah, and weekly lesson schedule to see a suggested breakdown of verses and pages.'}
             </p>
           </div>
 
           <div className="bg-white rounded-3xl border border-slate-200 shadow-sm p-6 sm:p-10 space-y-8">
-            
+
             {/* Simulator Controls */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              
+
               {/* Step 1: Learning Track */}
               <div className="space-y-2">
                 <label className="block text-xs font-extrabold text-slate-800">
-                  {isAr ? '1. نوع المسار الدراسي:' : '1. Select Study Track:'}
+                  {isAr ? 'نوع الدراسة' : 'Study focus'}
                 </label>
                 <div className="grid grid-cols-3 gap-2">
                   <button
@@ -308,7 +249,7 @@ export default function NewLandingPage() {
                         : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
                     }`}
                   >
-                    {isAr ? 'حفظ جديد' : 'New Hifz'}
+                    {isAr ? 'حفظ' : 'Memorization'}
                   </button>
                   <button
                     type="button"
@@ -319,7 +260,7 @@ export default function NewLandingPage() {
                         : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
                     }`}
                   >
-                    {isAr ? 'مراجعة وتثبيت' : 'Revision'}
+                    {isAr ? 'مراجعة' : 'Revision'}
                   </button>
                   <button
                     type="button"
@@ -330,7 +271,7 @@ export default function NewLandingPage() {
                         : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
                     }`}
                   >
-                    {isAr ? 'تصحيح تلاوة' : 'Tajweed'}
+                    {isAr ? 'تجويد' : 'Tajweed'}
                   </button>
                 </div>
               </div>
@@ -338,7 +279,7 @@ export default function NewLandingPage() {
               {/* Step 2: Target Surah Picker */}
               <div className="space-y-2">
                 <label className="block text-xs font-extrabold text-slate-800">
-                  {isAr ? '2. السورة المستهدفة:' : '2. Target Surah:'}
+                  {isAr ? 'السورة' : 'Surah'}
                 </label>
                 <select
                   value={selectedSurahNumber}
@@ -347,7 +288,7 @@ export default function NewLandingPage() {
                 >
                   {QURAN_SURAHS.map((s) => (
                     <option key={s.number} value={s.number}>
-                      {s.number}. {s.nameAr} ({s.totalVerses} آية • صفحة {s.startPage}-{s.endPage})
+                      {s.number}. {isAr ? s.nameAr : s.nameEn} ({s.totalVerses} {isAr ? 'آية • صفحة' : 'ayahs • pages'} {s.startPage}-{s.endPage})
                     </option>
                   ))}
                 </select>
@@ -357,28 +298,13 @@ export default function NewLandingPage() {
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
                   <label className="text-xs font-extrabold text-slate-800">
-                    {isAr ? '3. عدد الحصص الأسبوعية:' : '3. Weekly Lessons:'}
+                    {isAr ? 'الحصص في الأسبوع' : 'Lessons per week'}
                   </label>
                   <span className="text-xs font-black text-emerald-900 bg-emerald-50 px-2.5 py-0.5 rounded-md border border-emerald-200">
-                    {weeklyFrequency} {isAr ? 'حصص / أسبوعياً' : 'classes / wk'}
+                    {weeklyFrequency} {isAr ? 'حصص أسبوعياً' : 'per week'}
                   </span>
                 </div>
-                <input
-                  type="range"
-                  min="1"
-                  max="6"
-                  value={weeklyFrequency}
-                  onChange={(e) => setWeeklyFrequency(parseInt(e.target.value, 10))}
-                  className="w-full accent-emerald-800 cursor-pointer h-2 bg-slate-200 rounded-lg mt-2"
-                />
-                <div className="flex justify-between text-[10px] font-bold text-slate-400">
-                  <span>1 حصة</span>
-                  <span>2</span>
-                  <span>3</span>
-                  <span>4</span>
-                  <span>5</span>
-                  <span>6 حصص</span>
-                </div>
+                <p className="rounded-xl bg-slate-50 border border-slate-200 p-3 text-xs text-slate-600">{isAr ? 'الباقات الحالية تشمل ٤ حصص أسبوعياً. يضبط المعلم الوتيرة بعد تقييم مستواك.' : 'Current plans include four lessons per week. Your teacher adjusts the pace after assessing your level.'}</p>
               </div>
 
             </div>
@@ -406,20 +332,20 @@ export default function NewLandingPage() {
               <div className="space-y-1 border-r border-emerald-900/60 pr-2">
                 <span className="text-xs font-bold text-emerald-300/80 block">{isAr ? 'المقرر الشهري:' : 'Surah Milestone:'}</span>
                 <span className="text-base sm:text-lg font-black text-emerald-200 truncate block">{selectedSurah.nameAr}</span>
-                <span className="text-[10px] text-emerald-300/70 block">{isAr ? 'إنجاز متقن ومثبت' : 'Verified retention'}</span>
+                <span className="text-[10px] text-emerald-300/70 block">{isAr ? 'السورة المختارة' : 'Selected surah'}</span>
               </div>
             </div>
 
             {/* Direct Link to Start this plan */}
             <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-2">
               <span className="text-xs text-slate-600 font-semibold">
-                {isAr 
-                  ? `خطة مخصصة لـ ${selectedSurah.nameAr} موزعة على ${simulatedLessonsPerMonth} حصة شهرياً مع رابط Google Meet مباشر لكل جلسة.`
+                {isAr
+                  ? `خطة مخصصة لـ ${selectedSurah.nameAr} موزعة على ${simulatedLessonsPerMonth} حصة شهرياً ويضيف المعلم رابط Google Meet قبل موعد الحصة.`
                   : `Custom plan for ${selectedSurah.nameEn} distributed across ${simulatedLessonsPerMonth} classes monthly.`}
               </span>
 
               <Link
-                href="/register/student"
+                href={enrollmentHref}
                 className="px-6 py-3 rounded-xl bg-emerald-950 hover:bg-emerald-900 text-white text-xs font-extrabold shadow-sm transition-all shrink-0 flex items-center gap-2"
               >
                 <span>{isAr ? 'اعتماد هذه الخطة وحجز الحصص' : 'Enroll with this Plan'}</span>
@@ -432,44 +358,44 @@ export default function NewLandingPage() {
         </div>
       </section>
 
-      {/* 3. VIRTUAL CLASSROOM 1:1 INTERACTIVE PREVIEW */}
-      <section id="classroom" className="py-20 bg-white border-b border-slate-200">
+      {/* Sample lesson */}
+      <section id="classroom" className="scroll-mt-20 py-20 bg-white border-b border-slate-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-12">
-          
+
           <div className="max-w-2xl space-y-2 text-center sm:text-start">
             <span className="text-xs font-extrabold uppercase tracking-widest text-emerald-800 block">
-              {isAr ? 'البيئة الافتراضية' : 'Classroom Experience'}
+              {isAr ? 'حصص مباشرة' : 'Live lessons'}
             </span>
             <h2 className="text-2xl sm:text-3xl font-black text-slate-950">
-              {isAr ? 'تجربة الحصة الفردية المباشرة 1:1' : 'Interactive 1-on-1 Virtual Classroom'}
+              {isAr ? 'تعلّم مباشرة مع معلّمك' : 'Learn one to one with your teacher'}
             </h2>
             <p className="text-slate-600 text-xs sm:text-sm">
-              {isAr ? 'جلسات مجهزة بروابط Google Meet مباشرة ومصحف رقمي تفاعلي وتدوين مستمر لملاحظات التجويد.' : 'Direct Google Meet video sessions with digital Mushaf display and real-time scholar feedback.'}
+              {isAr ? 'تلتقي بمعلّمك عبر Google Meet، وتتابعان القراءة والملاحظات خلال الحصة.' : 'Meet your teacher on Google Meet and follow along with the Quran and lesson notes.'}
             </p>
           </div>
 
           {/* Classroom UI Mockup */}
           <div className="bg-slate-950 rounded-3xl p-6 sm:p-8 border border-slate-800 text-white shadow-2xl space-y-6">
-            
+
             {/* Top Class Bar */}
             <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-800 pb-4">
               <div className="flex items-center gap-3">
                 <div className="w-3 h-3 rounded-full bg-red-500 animate-pulse"></div>
-                <span className="text-xs font-extrabold text-slate-300 font-mono">LIVE • Google Meet</span>
+                <span className="text-xs font-extrabold text-slate-300">{isAr ? 'نموذج توضيحي • Google Meet' : 'Illustrative preview • Google Meet'}</span>
                 <span className="text-xs font-bold text-emerald-400 bg-emerald-950 px-2.5 py-0.5 rounded-md border border-emerald-800">
                   {isAr ? 'حصة تسميع وإتقان: سورة البقرة' : 'Class Session: Surah Al-Baqarah'}
                 </span>
               </div>
 
               <div className="flex items-center gap-4 text-xs font-bold text-slate-400">
-                <span className="flex items-center gap-1.5"><Clock className="w-3.5 h-3.5 text-amber-400" /> 45:00 دقيقة</span>
-                <span className="flex items-center gap-1.5"><ShieldCheck className="w-3.5 h-3.5 text-emerald-400" /> جلسة مشفرة</span>
+                <span className="flex items-center gap-1.5"><Clock className="w-3.5 h-3.5 text-amber-400" /> 45:00 {isAr ? 'دقيقة' : 'minutes'}</span>
+                <span className="flex items-center gap-1.5"><ShieldCheck className="w-3.5 h-3.5 text-emerald-400" /> {isAr ? 'نموذج توضيحي' : 'Illustrative session'}</span>
               </div>
             </div>
 
             {/* Classroom Split View */}
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
-              
+
               {/* Video Stream Simulation */}
               <div className="lg:col-span-5 bg-slate-900 rounded-2xl p-4 border border-slate-800 flex flex-col justify-between space-y-4">
                 <div className="space-y-2">
@@ -477,15 +403,15 @@ export default function NewLandingPage() {
                     <div className="text-center space-y-2">
                       <GraduationCap className="w-10 h-10 text-emerald-400 mx-auto" />
                       <span className="text-xs font-bold text-slate-300 block">{isAr ? 'الشيخ أ.د. إبراهيم السلمي' : 'Prof. Dr. Ibrahim Al-Sulami'}</span>
-                      <span className="text-[10px] text-slate-500 font-mono block">{isAr ? 'معلم مجاز بالسند المتصل' : 'Certified Scholar'}</span>
+                      <span className="text-[10px] text-slate-500 block">{isAr ? 'معلّم مجاز' : 'Qualified Quran teacher'}</span>
                     </div>
                   </div>
                 </div>
 
                 <div className="p-3 rounded-xl bg-slate-950/80 border border-slate-800 space-y-1.5 text-xs">
-                  <span className="font-bold text-amber-400 block">{isAr ? 'ملاحظات المعلم الفورية:' : 'Scholar Live Notes:'}</span>
+                  <span className="font-bold text-amber-400 block">{isAr ? 'ملاحظات المعلّم:' : 'Teacher’s notes:'}</span>
                   <p className="text-slate-300 text-[11px] leading-relaxed">
-                    {isAr ? 'مخارج الحروف متقنة. يُرجى الانتباه لمقدار مد الصلة الكبرى في الآية 255.' : 'Makharij on point. Notice duration of Madd in verse 255.'}
+                    {isAr ? 'أحسنت في إخراج الحروف. انتبه إلى مقدار مدّ الصلة في الآية 255.' : 'Good articulation. Watch the length of the madd in verse 255.'}
                   </p>
                 </div>
               </div>
@@ -516,7 +442,6 @@ export default function NewLandingPage() {
                   <span className="font-mono text-slate-500">Google Meet Audio Active</span>
                 </div>
               </div>
-
             </div>
 
           </div>
@@ -524,24 +449,24 @@ export default function NewLandingPage() {
         </div>
       </section>
 
-      {/* 4. CERTIFIED SCHOLARS FACULTY DIRECTORY */}
-      <section id="faculty" className="py-20 bg-slate-50 border-b border-slate-200">
+      {/* Teachers */}
+      <section id="faculty" className="scroll-mt-20 py-20 bg-slate-50 border-b border-slate-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-12">
-          
+
           <div className="max-w-2xl space-y-2 text-center sm:text-start">
             <span className="text-xs font-extrabold uppercase tracking-widest text-emerald-800 block">
-              {isAr ? 'هيئة المقرئين' : 'Certified Scholars'}
+                  {isAr ? 'المعلّمون' : 'Our teachers'}
             </span>
             <h2 className="text-2xl sm:text-3xl font-black text-slate-950">
-              {isAr ? 'نخبة المقرئين والمعلمين المجازين بالسند' : 'Learn from Vetted Quran Scholars'}
+              {isAr ? 'تعرّف على معلّمينا' : 'Meet your Quran teachers'}
             </h2>
             <p className="text-slate-600 text-xs sm:text-sm">
-              {isAr ? 'معلمون مجازون متصلو السند خضعوا لتدقيق دقيق لضمان أعلى درجات الضبط والإتقان.' : 'Scholars verified with authentic sanad transmission chains for accurate Quran education.'}
+              {isAr ? 'تعرّف على خبرات معلّمينا وإجازاتهم قبل اختيار المعلّم المناسب لك.' : 'Review each teacher’s background and qualifications before choosing who to study with.'}
             </p>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {teachers.slice(0, 3).map((teacher) => (
+            {teachers.filter(teacher => teacher.approvalStatus === 'APPROVED').slice(0, 3).map((teacher) => (
               <div key={teacher.id} className="bg-white rounded-2xl p-6 border border-slate-200 shadow-xs space-y-4 flex flex-col justify-between">
                 <div className="space-y-3">
                   <div className="flex items-center gap-3">
@@ -550,7 +475,7 @@ export default function NewLandingPage() {
                     </div>
                     <div>
                       <h3 className="font-extrabold text-base text-slate-950">{isAr ? teacher.nameAr : teacher.nameEn}</h3>
-                      <span className="text-[11px] text-slate-500 font-bold block">{isAr ? 'معلم مجاز بالسند المتصل' : 'Certified Scholar'}</span>
+                      <span className="text-[11px] text-slate-500 font-bold block">{isAr ? 'معلّم مجاز' : 'Qualified Quran teacher'}</span>
                     </div>
                   </div>
 
@@ -565,11 +490,11 @@ export default function NewLandingPage() {
                 <div className="space-y-3 pt-2 border-t border-slate-100">
                   <div className="flex items-center justify-between text-xs font-bold text-slate-600">
                     <span>{isAr ? 'ساعات العمل اليومية:' : 'Available Hours:'}</span>
-                    <span className="font-mono text-emerald-900">{teacher.workingHoursStart || '12:00'} - {teacher.workingHoursEnd || '18:00'}</span>
+                    <span className="font-mono text-emerald-900">{formatAvailabilityRanges(teacher.availabilityRanges, teacher.workingHoursStart, teacher.workingHoursEnd, isAr, teacher.availabilityByDay)}</span>
                   </div>
 
                   <Link
-                    href="/register/student"
+                    href={`/register/student?teacher=${encodeURIComponent(teacher.id)}&gender=${teacher.gender}`}
                     className="w-full py-2.5 rounded-xl bg-slate-100 hover:bg-emerald-950 hover:text-white text-slate-800 text-xs font-extrabold text-center block transition-all"
                   >
                     {isAr ? 'اختيار هذا المعلم والتسجيل' : 'Select This Scholar'}
@@ -582,63 +507,64 @@ export default function NewLandingPage() {
         </div>
       </section>
 
-      {/* 5. PLANS & PRICING MATRIX */}
-      <section id="plans" className="py-20 bg-white border-b border-slate-200">
-        <PlansGrid />
+      <div className="text-center py-6"><Link href="/teachers" className="font-bold text-emerald-800 underline">{isAr ? 'تصفح جميع المعلمين' : 'Browse all teacher profiles'}</Link></div>
+      {/* Plans and pricing */}
+      <section id="plans" className="scroll-mt-20 py-20 bg-white border-b border-slate-200">
+        <PlansGrid onSelectPlan={plan => router.push(`/register/student?plan=${encodeURIComponent(plan.id)}&surah=${selectedSurahNumber}&track=${simulatorTrack}`)} />
       </section>
 
-      {/* 6. WORKFLOW - 4 STEPS */}
-      <section id="workflow" className="py-20 bg-slate-50 border-b border-slate-200">
+      {/* Getting started */}
+      <section id="workflow" className="scroll-mt-20 py-20 bg-slate-50 border-b border-slate-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-12">
-          
+
           <div className="text-center max-w-2xl mx-auto space-y-2">
             <span className="text-xs font-extrabold uppercase tracking-widest text-emerald-800 block">
-              {isAr ? 'دورة العمل' : 'How It Works'}
+              {isAr ? 'الخطوات التالية' : 'Getting started'}
             </span>
             <h2 className="text-2xl sm:text-3xl font-black text-slate-950">
-              {isAr ? 'مراحل التسجيل والدراسة في سَنَد' : '4 Simple Steps to Get Started'}
+              {isAr ? 'ابدأ التعلّم في أربع خطوات' : 'Start learning in four steps'}
             </h2>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-            
+
             <div className="bg-white p-6 rounded-2xl border border-slate-200 space-y-3">
               <div className="text-xs font-black text-slate-400 font-mono">01</div>
               <h3 className="text-base font-extrabold text-slate-900">
-                {isAr ? 'اختيار الخطة والمعلم' : 'Choose Plan & Teacher'}
+                {isAr ? 'اختر الباقة والمعلّم' : 'Choose a plan and teacher'}
               </h3>
               <p className="text-xs text-slate-600 leading-relaxed">
-                {isAr ? 'حدد الخطة الشهرية المناسبة وعدد الحصص الأسبوعية مع المعلم المفضل لديك.' : 'Pick your monthly plan in SAR with your preferred instructor.'}
+                {isAr ? 'اختر الباقة وعدد الحصص، ثم اختر المعلّم الذي يناسبك.' : 'Choose a monthly plan, lesson frequency, and teacher.'}
               </p>
             </div>
 
             <div className="bg-white p-6 rounded-2xl border border-slate-200 space-y-3">
               <div className="text-xs font-black text-slate-400 font-mono">02</div>
               <h3 className="text-base font-extrabold text-slate-900">
-                {isAr ? 'تحديد الهدف القرآني' : 'Set Quran Goal'}
+                {isAr ? 'حدّد هدفك' : 'Set your goal'}
               </h3>
               <p className="text-xs text-slate-600 leading-relaxed">
-                {isAr ? 'اختر مسارك القرآني وسور الحفظ ليقوم النظام تلقائياً بتوليد وتوزيع جدول الآيات.' : 'Select surahs to auto-generate your monthly lesson plan.'}
+                {isAr ? 'اختر ما تريد حفظه أو مراجعته، ونساعدك على تقسيمه إلى حصص.' : 'Choose what you want to memorize or revise and plan it across your lessons.'}
               </p>
             </div>
 
             <div className="bg-white p-6 rounded-2xl border border-slate-200 space-y-3">
               <div className="text-xs font-black text-slate-400 font-mono">03</div>
               <h3 className="text-base font-extrabold text-slate-900">
-                {isAr ? 'التحويل البنكي' : 'Bank Transfer'}
+                {isAr ? 'أكمل الدفع' : 'Complete payment'}
               </h3>
               <p className="text-xs text-slate-600 leading-relaxed">
-                {isAr ? 'حوّل الرسوم عبر الحساب المعتمد لمصرف الراجحي وارفِع صورة الإيصال للاعتماد الفوري.' : 'Transfer to official Al Rajhi IBAN and upload receipt.'}
+                {isAr ? 'اتبع تعليمات الدفع في حسابك وأرسل الإيصال لتأكيد اشتراكك.' : 'Follow the payment instructions in your account and submit your receipt.'}
               </p>
             </div>
 
             <div className="bg-white p-6 rounded-2xl border border-slate-200 space-y-3">
               <div className="text-xs font-black text-slate-400 font-mono">04</div>
               <h3 className="text-base font-extrabold text-slate-900">
-                {isAr ? 'حضور الحصص المباشرة' : 'Attend Live Classes'}
+                {isAr ? 'ابدأ حصصك' : 'Start your lessons'}
               </h3>
               <p className="text-xs text-slate-600 leading-relaxed">
-                {isAr ? 'استلم جدولك بدون أي تعارض، وانضم لحصصك الفردية عبر رابط Google Meet مباشرة.' : 'Join your private Google Meet classes via your calendar.'}
+                {isAr ? 'تابع جدولك وانضم إلى معلّمك عبر Google Meet في موعد الحصة.' : 'Check your schedule and join your teacher on Google Meet.'}
               </p>
             </div>
 
@@ -647,16 +573,16 @@ export default function NewLandingPage() {
         </div>
       </section>
 
-      {/* 7. FAQ SECTION */}
-      <section id="faq" className="py-20 bg-white border-b border-slate-200">
+      {/* Frequently asked questions */}
+      <section id="faq" className="scroll-mt-20 py-20 bg-white border-b border-slate-200">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 space-y-10">
-          
+
           <div className="text-center space-y-2">
             <span className="text-xs font-extrabold uppercase tracking-widest text-emerald-800 block">
               {isAr ? 'الأسئلة الشائعة' : 'FAQ'}
             </span>
             <h2 className="text-2xl sm:text-3xl font-black text-slate-950">
-              {isAr ? 'إجابات على أهم الاستفسارات حول المقرأة' : 'Frequently Asked Questions'}
+              {isAr ? 'هل لديك سؤال؟' : 'Questions?'}
             </h2>
           </div>
 
@@ -691,7 +617,7 @@ export default function NewLandingPage() {
         </div>
       </section>
 
-      {/* 8. FACULTY ONBOARDING CALLOUT */}
+      {/* Teacher applications */}
       <section className="py-16 bg-slate-900 text-white">
         <div className="max-w-4xl mx-auto px-4 text-center space-y-6">
           <div className="w-12 h-12 rounded-xl bg-slate-800 text-amber-400 flex items-center justify-center mx-auto border border-slate-700 font-bold">
@@ -700,12 +626,12 @@ export default function NewLandingPage() {
 
           <div className="space-y-2">
             <h2 className="text-2xl sm:text-3xl font-black">
-              {isAr ? 'هل أنت معلم قرآن كريم مجاز بالسند؟' : 'Are You a Certified Quran Scholar?'}
+              {isAr ? 'هل أنت معلّم قرآن؟' : 'Are you a Quran teacher?'}
             </h2>
             <p className="text-slate-300 text-xs sm:text-sm max-w-2xl mx-auto leading-relaxed">
-              {isAr 
-                ? 'انضم إلى منصة سَنَد وقدم حلقاتك القرآنية لطلاب من مختلف أنحاء العالم عبر بيئة تقنية متكاملة ومنظمة.' 
-                : 'Join Sanad to conduct online recitation and memorization halaqat worldwide.'}
+              {isAr
+                ? 'نرحّب بالمعلّمين المجازين الراغبين في تدريس القرآن عن بُعد. قدّم طلبك للتعرّف على خطوات الانضمام.'
+                : 'We welcome qualified teachers who want to teach the Quran online. Apply to learn more about joining Sanad.'}
             </p>
           </div>
 
@@ -713,23 +639,12 @@ export default function NewLandingPage() {
             href="/register/teacher"
             className="inline-block px-7 py-3.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs shadow-md transition-all"
           >
-            {isAr ? 'التقديم كمعلم معتمد' : 'Apply as Certified Teacher'}
+            {isAr ? 'قدّم طلب انضمام' : 'Apply to teach'}
           </Link>
         </div>
       </section>
 
-      {/* FOOTER */}
-      <footer className="py-8 bg-slate-950 text-slate-400 text-xs text-center border-t border-slate-800">
-        <div className="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-4">
-          <div className="flex items-center gap-2">
-            <Image src="/logo.png" alt="Sanad" width={28} height={28} className="h-6 w-auto" />
-            <span className="font-bold text-slate-200">{isAr ? 'منصة سَنَد لتعليم القرآن الكريم' : 'Sanad Quran Platform'}</span>
-          </div>
-          <div>
-            {isAr ? 'جميع الحقوق محفوظة © 2026 منصة سَنَد' : 'All rights reserved © 2026 Sanad Platform'}
-          </div>
-        </div>
-      </footer>
+      <PublicFooter />
 
     </div>
   );

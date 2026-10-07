@@ -4,7 +4,7 @@ import React, { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useApp } from '@/context/AppContext';
-import { GraduationCap, Mail, Award, Lock, CheckCircle2, User, BookOpen, Phone, Calendar } from 'lucide-react';
+import { GraduationCap, Mail, Award, Lock, CheckCircle2, User, Phone, Calendar } from 'lucide-react';
 
 export default function TeacherRegisterPage() {
   const router = useRouter();
@@ -18,11 +18,13 @@ export default function TeacherRegisterPage() {
   const [gender, setGender] = useState<'MALE' | 'FEMALE'>('MALE');
   const [password, setPassword] = useState('');
   const [ijazahDetails, setIjazahDetails] = useState('');
-  const [specializations, setSpecializations] = useState<string[]>(['الإجازة بالسند المتصل']);
+  const specializations = ['الإجازة بالسند المتصل'];
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
-  const handleTeacherSubmit = (e: React.FormEvent) => {
+  const handleTeacherSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmitting) return;
     setFormError(null);
 
     if (!name.trim() || !email.trim() || !ijazahDetails.trim()) {
@@ -30,18 +32,22 @@ export default function TeacherRegisterPage() {
       return;
     }
 
+    if (!/^\+?[0-9\s()-]{8,24}$/.test(phone.trim()) || phone.replace(/\D/g, '').length < 8 || phone.replace(/\D/g, '').length > 15) { setFormError(isAr ? 'أدخل رقم جوال صحيحاً مع مفتاح الدولة.' : 'Enter a valid phone number including country code.'); return; }
+    if (!birthDate || birthDate > new Date().toISOString().slice(0,10)) { setFormError(isAr ? 'أدخل تاريخ ميلاد صحيحاً في الماضي.' : 'Enter a valid birth date in the past.'); return; }
+    if (password.length < 8) { setFormError(isAr ? 'كلمة المرور يجب أن تكون ٨ أحرف على الأقل.' : 'Password must have at least 8 characters.'); return; }
+    setIsSubmitting(true);
     try {
-      applyAsTeacher(name, email, gender, ijazahDetails, specializations, password, phone, birthDate);
+      await applyAsTeacher(name, email, gender, ijazahDetails, specializations, password, phone, birthDate);
       router.push('/teacher/dashboard');
-    } catch (err: any) {
-      setFormError(err.message || (isAr ? 'حدث خطأ أثناء التسجيل.' : 'An error occurred during registration.'));
-    }
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : (isAr ? 'حدث خطأ أثناء التسجيل.' : 'An error occurred during registration.'));
+    } finally { setIsSubmitting(false); }
   };
 
   return (
     <div className="min-h-[85vh] flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8 bg-slate-50/70">
       <div className="max-w-md w-full bg-white rounded-3xl p-8 shadow-xl border border-slate-200/80 space-y-6">
-        
+
         <div className="text-center space-y-2">
           <div className="w-14 h-14 rounded-2xl gold-gradient-bg flex items-center justify-center text-emerald-950 mx-auto shadow-md">
             <GraduationCap className="w-8 h-8 stroke-[2.2]" />
@@ -50,12 +56,12 @@ export default function TeacherRegisterPage() {
             {isAr ? 'التقديم كمعلم قرآن مجاز' : 'Teacher Application'}
           </h2>
           <p className="text-xs text-slate-500 font-medium">
-            {isAr ? 'انضم لنخبة المعلمين المعلمين والمعلمات المجازين' : 'Apply to join our faculty of certified Quran scholars'}
+            {isAr ? 'انضم إلى المعلمين والمعلمات المجازين' : 'Apply to join our faculty of certified Quran scholars'}
           </p>
         </div>
 
         {formError && (
-          <div className="bg-red-50 border border-red-200 text-red-800 p-4 rounded-2xl text-xs font-bold animate-shake">
+          <div role="alert" className="bg-red-50 border border-red-200 text-red-800 p-4 rounded-2xl text-xs font-bold animate-shake">
             {formError}
           </div>
         )}
@@ -154,6 +160,8 @@ export default function TeacherRegisterPage() {
               <Calendar className="w-4 h-4 text-slate-400 absolute top-3.5 right-3.5 pointer-events-none" />
               <input
                 type="date"
+                min="1900-01-01"
+                max={new Date().toISOString().slice(0,10)}
                 required
                 value={birthDate}
                 onChange={(e) => setBirthDate(e.target.value)}
@@ -187,6 +195,8 @@ export default function TeacherRegisterPage() {
               <Lock className="w-4 h-4 text-slate-400 absolute top-3.5 right-3.5 pointer-events-none" />
               <input
                 type="password"
+                minLength={8}
+                autoComplete="new-password"
                 required
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
@@ -198,6 +208,8 @@ export default function TeacherRegisterPage() {
 
           <button
             type="submit"
+            disabled={isSubmitting}
+            aria-busy={isSubmitting}
             className="w-full py-4 rounded-2xl gold-gradient-bg text-emerald-950 font-black text-sm shadow-md hover:brightness-105 transition-all flex items-center justify-center gap-2 cursor-pointer mt-2"
           >
             <CheckCircle2 className="w-4 h-4 stroke-[2.5]" />

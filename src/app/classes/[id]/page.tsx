@@ -1,32 +1,31 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
+import { localizeQuranScope, localizeLanguage, localizeSpecialty } from '@/utils/localization';
 import { useApp } from '@/context/AppContext';
 import { AvatarBadge } from '@/components/AvatarBadge';
 import { AuthGuard } from '@/components/AuthGuard';
-import { 
-  Video, 
-  Calendar as CalendarIcon, 
-  Clock, 
-  CheckCircle2, 
-  ArrowRight, 
+import { formatAvailabilityRanges } from '@/utils/timeFormat';
+import { getTeacherAvailableSlots, lessonTimeRange, timeRangesOverlap } from '@/utils/availability';
+import {
+  Video,
+  Clock,
+  CheckCircle2,
+  ArrowRight,
   ArrowLeft,
-  ExternalLink, 
-  BookOpen, 
-  Target, 
-  FileText, 
-  Lock, 
-  User, 
-  Sparkles, 
-  CalendarDays, 
-  ShieldCheck, 
+  ExternalLink,
+  BookOpen,
+  FileText,
+  Lock,
+  Sparkles,
+  CalendarDays,
+  ShieldCheck,
   Award,
   Copy,
   Check,
   Star,
-  UserCheck,
   AlertCircle,
   Edit3,
   Save
@@ -34,50 +33,80 @@ import {
 
 import { getDayNameArFromDate } from '@/data/quranData';
 import { TeacherDatePicker } from '@/components/TeacherDatePicker';
+import { ReviewModal } from '@/components/ReviewModal';
 
 function ClassDetailContent() {
   const params = useParams();
   const router = useRouter();
   const lessonId = params.id as string;
 
-  const { language, lessons, teachers, student, role, rescheduleLesson, completeLesson, updateMeetUrl } = useApp();
+  const { isHydrated, language, lessons, teachers, student, role, reviews, currentUser, rescheduleLesson, completeLesson, updateMeetUrl } = useApp();
   const isAr = language === 'ar';
+  const [currentTime, setCurrentTime] = useState(() => Date.now());
+  useEffect(() => { const timer = window.setInterval(() => setCurrentTime(Date.now()), 30_000); return () => window.clearInterval(timer); }, []);
 
   const lesson = lessons.find(l => l.id === lessonId);
-  const assignedTeacher = teachers.find(t => t.id === (lesson?.teacherId || student.assignedTeacherId)) || teachers[0];
+  const assignedTeacher = teachers.find(t => t.id === (lesson?.teacherId || student.assignedTeacherId));
 
   // RESCHEDULING STATE
   const [isRescheduling, setIsRescheduling] = useState(false);
   const [newDateInput, setNewDateInput] = useState(lesson?.date || new Date().toISOString().split('T')[0]);
-  const [selectedSlot, setSelectedSlot] = useState(lesson?.time.split('@')[1]?.trim() || '12:00');
+  const [selectedSlot, setSelectedSlot] = useState(lesson?.time.match(/\d{1,2}:\d{2}/)?.[0] || '12:00');
+  const [availabilityResult, setAvailabilityResult] = useState<{ key: string; occupied: { date: string; time: string; durationMinutes: number }[]; error?: string }>({ key: '', occupied: [] });
+  const [rescheduleError, setRescheduleError] = useState('');
   const [completionNotes, setCompletionNotes] = useState('');
+  const [classScope, setClassScope] = useState<string | null>(null);
+  const [completionError, setCompletionError] = useState('');
+  const [isCompleting, setIsCompleting] = useState(false);
+  const [showReviewModal, setShowReviewModal] = useState(false);
+
   const [copiedLink, setCopiedLink] = useState(false);
+  const teacherId = assignedTeacher?.id;
+  const availabilityKey = `${teacherId || ''}:${newDateInput}`;
+  const availabilityLoading = isRescheduling && availabilityResult.key !== availabilityKey;
+  const availabilityError = availabilityResult.key === availabilityKey ? availabilityResult.error || '' : '';
+  const occupiedLessons = availabilityResult.key === availabilityKey && !availabilityResult.error ? availabilityResult.occupied : [];
 
   const selectedDayNameAr = getDayNameArFromDate(newDateInput);
-  const isTeacherWorkingDay = !assignedTeacher.workingDaysAr || assignedTeacher.workingDaysAr.length === 0 || assignedTeacher.workingDaysAr.includes(selectedDayNameAr);
+  const isTeacherWorkingDay = !assignedTeacher?.workingDaysAr || assignedTeacher?.workingDaysAr.length === 0 || assignedTeacher?.workingDaysAr.includes(selectedDayNameAr);
 
   // MEET LINK STATE FOR TEACHER
-  const [meetUrlInput, setMeetUrlInput] = useState(lesson?.googleMeetUrl || '');
-  const [isEditingMeetUrl, setIsEditingMeetUrl] = useState(false);
+  const [meetUrlDraft, setMeetUrlDraft] = useState(lesson?.googleMeetUrl || '');
   const [meetUrlSavedMsg, setMeetUrlSavedMsg] = useState(false);
+  const meetUrlInputRef = useRef<HTMLInputElement>(null);
 
-  // Sync state if lesson updates
-  React.useEffect(() => {
-    if (lesson?.googleMeetUrl !== undefined) {
-      setMeetUrlInput(lesson.googleMeetUrl);
-    }
-  }, [lesson?.googleMeetUrl]);
+  useEffect(() => {
+    if (!isRescheduling || !teacherId) return;
+    const controller = new AbortController();
+    fetch(`/api/teachers/availability?teacherId=${encodeURIComponent(teacherId)}&from=${newDateInput}&to=${newDateInput}&excludeLessonId=${encodeURIComponent(lessonId)}`, {
+      cache: 'no-store',
+      signal: controller.signal,
+    }).then(async response => {
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || 'Unable to load availability.');
+      setAvailabilityResult({ key: availabilityKey, occupied: Array.isArray(result.occupied) ? result.occupied : [] });
+    }).catch(error => {
+      if (error instanceof DOMException && error.name === 'AbortError') return;
+      setAvailabilityResult({ key: availabilityKey, occupied: [], error: isAr ? 'تعذر تحميل الحجوزات الحالية.' : 'Could not load current bookings.' });
+    });
+    return () => controller.abort();
+  }, [isRescheduling, teacherId, newDateInput, availabilityKey, isAr, lessonId]);
 
-  const handleSaveMeetUrlSubmit = (e: React.FormEvent) => {
+  const [meetError, setMeetError] = useState('');
+  const [savingMeet, setSavingMeet] = useState(false);
+  const handleSaveMeetUrlSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!lesson) return;
-    updateMeetUrl(lesson.id, meetUrlInput.trim());
-    setIsEditingMeetUrl(false);
-    setMeetUrlSavedMsg(true);
-    setTimeout(() => setMeetUrlSavedMsg(false), 3000);
+    if (savingMeet) return;
+    setSavingMeet(true); setMeetError('');
+    try { await updateMeetUrl(lesson.id, meetUrlDraft.trim()); setMeetUrlSavedMsg(true);
+      setTimeout(() => setMeetUrlSavedMsg(false), 3000);
+    } catch (error) { setMeetError(error instanceof Error ? error.message : 'Unable to save meeting link.'); } finally { setSavingMeet(false); }
   };
 
-  const todayStr = useMemo(() => new Date().toISOString().split('T')[0], []);
+  if (!isHydrated) {
+    return <div className="min-h-screen flex items-center justify-center text-emerald-900 font-bold">{isAr ? 'جارٍ تحميل الحصة...' : 'Loading class...'}</div>;
+  }
 
   if (!lesson) {
     return (
@@ -103,78 +132,75 @@ function ClassDetailContent() {
     );
   }
 
-  const isTeacherView = role === 'TEACHER';
-  const partnerNameAr = isTeacherView 
-    ? (lesson.studentNameAr || student.nameAr || 'عبد الرحمن بن خالد العتيبي') 
-    : (lesson.teacherNameAr || assignedTeacher.nameAr || 'الشيخ أ.د. إبراهيم السلمي');
-  const partnerNameEn = isTeacherView 
-    ? (lesson.studentNameEn || student.nameEn || 'Abdulrahman Al-Otaibi') 
-    : (lesson.teacherNameEn || assignedTeacher.nameEn || 'Sheikh Prof. Ibrahim Al-Sulami');
+  if (!assignedTeacher) return <div className="mx-auto max-w-xl p-8 text-center"><h1 className="text-xl font-bold">{isAr ? 'ملف المعلم غير متاح' : 'Teacher profile unavailable'}</h1><p className="mt-3 text-sm text-slate-500">{isAr ? 'قد يكون الحساب غير متاح حالياً. لا يزال سجل الحصة محفوظاً.' : 'This teacher account may currently be unavailable. The class record is still saved.'}</p><Link href={role === 'ADMIN' ? '/admin/dashboard' : role === 'TEACHER' ? '/teacher/dashboard' : '/student/dashboard'} className="mt-4 inline-block text-emerald-800">{isAr ? 'العودة للجدول' : 'Back to schedule'}</Link></div>;
+
+  const isTeacherView = role === 'TEACHER' || role === 'ADMIN';
+  const partnerNameAr = isTeacherView
+    ? (lesson.studentNameAr || 'طالب' )
+    : (lesson.teacherNameAr || assignedTeacher?.nameAr || 'المعلم');
+  const partnerNameEn = isTeacherView
+    ? (lesson.studentNameEn || 'Student')
+    : (lesson.teacherNameEn || assignedTeacher?.nameEn || 'Teacher');
 
   // GENERATE TEACHER SLOTS STRICTLY MATCHING TEACHER AVAILABILITY
   const generateTeacherSlots = () => {
-    const rawSlotsList = (assignedTeacher.availableSlots && assignedTeacher.availableSlots.length > 0)
-      ? assignedTeacher.availableSlots
-      : null;
-
-    const startHour = parseInt((assignedTeacher.workingHoursStart || '12:00').split(':')[0], 10);
-    const endHour = parseInt((assignedTeacher.workingHoursEnd || '18:00').split(':')[0], 10);
+    const rawSlotsList = getTeacherAvailableSlots(assignedTeacher, selectedDayNameAr, lesson.durationMinutes || 5);
 
     const slots = [];
-    if (rawSlotsList) {
-      for (const slotStr of rawSlotsList) {
-        const h = parseInt(slotStr.split(':')[0], 10);
-        const m = slotStr.split(':')[1] || '00';
-        const isDateBooked = lessons.some(
-          l => l.teacherId === assignedTeacher.id && 
-               l.date === newDateInput && 
-               l.status === 'SCHEDULED' && 
-               l.id !== lesson.id &&
-               (l.time.includes(slotStr) || l.time.endsWith(slotStr))
-        );
-        const isBooked = Boolean(assignedTeacher.bookedTimeSlots?.includes(slotStr) || isDateBooked);
+    for (const slotStr of rawSlotsList) {
+        const [h, minute] = slotStr.split(':').map(Number);
+        const m = String(minute).padStart(2, '0');
+        const candidate = lessonTimeRange(slotStr, lesson.durationMinutes || 5);
+        const isDateBooked = occupiedLessons.some(l => {
+          if (l.date !== newDateInput) return false;
+          const booked = lessonTimeRange(l.time, l.durationMinutes || 5);
+          return Boolean(candidate && booked && timeRangesOverlap(candidate, booked));
+        }) || lessons.some(l => {
+          if (l.teacherId !== assignedTeacher.id || l.date !== newDateInput || l.status !== 'SCHEDULED' || l.id === lesson.id) return false;
+          const booked = lessonTimeRange(l.time, l.durationMinutes || 5);
+          return Boolean(candidate && booked && timeRangesOverlap(candidate, booked));
+        });
+        const isBooked = availabilityLoading || Boolean(availabilityError) || isDateBooked;
         const displayHour = h % 12 === 0 ? 12 : h % 12;
         const periodAr = h >= 12 ? 'م' : 'ص';
         const periodEn = h >= 12 ? 'PM' : 'AM';
         const formattedText = `${displayHour}:${m} ${isAr ? periodAr : periodEn}`;
         slots.push({ rawSlot: slotStr, formattedText, isBooked });
-      }
-    } else {
-      for (let h = startHour; h < endHour; h++) {
-        const slotStr = `${h.toString().padStart(2, '0')}:00`;
-        const isDateBooked = lessons.some(
-          l => l.teacherId === assignedTeacher.id && 
-               l.date === newDateInput && 
-               l.status === 'SCHEDULED' && 
-               l.id !== lesson.id &&
-               (l.time.includes(slotStr) || l.time.endsWith(slotStr))
-        );
-        const isBooked = Boolean(assignedTeacher.bookedTimeSlots?.includes(slotStr) || isDateBooked);
-        const displayHour = h % 12 === 0 ? 12 : h % 12;
-        const periodAr = h >= 12 ? 'م' : 'ص';
-        const periodEn = h >= 12 ? 'PM' : 'AM';
-        const formattedText = `${displayHour}:00 ${isAr ? periodAr : periodEn}`;
-        slots.push({ rawSlot: slotStr, formattedText, isBooked });
-      }
     }
     return slots;
   };
 
   const teacherSlots = generateTeacherSlots();
 
-  const handleRescheduleSubmit = (e: React.FormEvent) => {
+  const handleRescheduleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (lesson.status === 'COMPLETED') return;
 
-    const slotObj = teacherSlots.find(s => s.rawSlot === selectedSlot) || teacherSlots[0];
-    const fullTimeStr = `@ ${slotObj.formattedText}`;
-    rescheduleLesson(lesson.id, newDateInput, fullTimeStr);
+    const slotObj = teacherSlots.find(s => s.rawSlot === selectedSlot && !s.isBooked);
+    if (!slotObj) {
+      setRescheduleError(isAr ? 'اختر وقتاً متاحاً في اليوم المحدد.' : 'Choose an available time on the selected day.');
+      return;
+    }
+    const saved = await rescheduleLesson(lesson.id, newDateInput, slotObj.rawSlot);
+    if (!saved) {
+      setRescheduleError(isAr ? 'تعذر حفظ الموعد؛ قد يكون الوقت حُجز للتو.' : 'Could not save the time; it may have just been booked.');
+      return;
+    }
+    setRescheduleError('');
     setIsRescheduling(false);
   };
 
-  const handleCompleteSubmit = (e: React.FormEvent) => {
+  const handleCompleteSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    completeLesson(lesson.id, completionNotes || (isAr ? 'تم حفظ التلاوة والأحكام والآيات المقررة بنجاح.' : 'Lesson completed successfully.'));
+    setCompletionError('');
+    setIsCompleting(true);
+    try {
+      await completeLesson(lesson.id, completionNotes || (isAr ? 'تم حفظ التلاوة والأحكام والآيات المقررة بنجاح.' : 'Class completed.'), classScope ?? lesson.surahTargetAr ?? lesson.surahTargetEn ?? '');
+    } catch (error) {
+      setCompletionError(error instanceof Error ? error.message : (isAr ? 'تعذر حفظ الحصة.' : 'Unable to save class completion.'));
+    } finally {
+      setIsCompleting(false);
+    }
   };
 
   const handleCopyMeetUrl = () => {
@@ -186,23 +212,26 @@ function ClassDetailContent() {
   };
 
   const isCompleted = lesson.status === 'COMPLETED';
-  const isExtraClass = lesson.id.startsWith('les-ext') || 
-    (lesson.notes && lesson.notes.includes('إضافية')) || 
+  const classStart = new Date(`${lesson.date}T${lesson.time.match(/\d{1,2}:\d{2}/)?.[0]?.padStart(5, '0') || '00:00'}:00+03:00`);
+  const completionAvailable = currentTime >= classStart.getTime() + lesson.durationMinutes * 60_000;
+  const existingClassReview = reviews.find(review => review.lessonId === lesson.id && (review.isMine || review.studentId === currentUser?.id));
+  const isExtraClass = lesson.id.startsWith('les-ext') ||
+    (lesson.notes && lesson.notes.includes('إضافية')) ||
     (lesson.surahTargetAr && lesson.surahTargetAr.includes('إضافية'));
 
   return (
     <div className="py-8 bg-slate-50/80 min-h-screen">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-6">
-        
+
         {/* 1. TOP BREADCRUMB & BACK NAVIGATION */}
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div className="flex items-center gap-2 text-xs font-bold text-slate-500">
-            <Link href="/student/dashboard" className="hover:text-emerald-700 transition-colors">
+            <Link href={role === 'TEACHER' ? '/teacher/dashboard' : role === 'ADMIN' ? '/admin/dashboard' : '/student/dashboard'} className="hover:text-emerald-700 transition-colors">
               {isAr ? 'لوحة التحكم' : 'Dashboard'}
             </Link>
             <span>/</span>
-            <Link href="/student/plan" className="hover:text-emerald-700 transition-colors">
-              {isAr ? 'الخطة القرآنية' : 'Quran Plan'}
+            <Link href={role === 'STUDENT' ? '/student/plan' : role === 'ADMIN' ? '/admin/dashboard' : '/teacher/students'} className="hover:text-emerald-700 transition-colors">
+              {role === 'STUDENT' ? (isAr ? 'الخطة القرآنية' : 'Quran Plan') : (isAr ? 'الطلاب' : 'Students')}
             </Link>
             <span>/</span>
             <span className="text-emerald-800 font-extrabold">{isAr ? 'تفاصيل الحصة' : 'Class Details'}</span>
@@ -220,7 +249,7 @@ function ClassDetailContent() {
         {/* 2. CLASS SESSION HERO BANNER */}
         <div className="bg-gradient-to-br from-emerald-950 via-slate-900 to-slate-950 text-white rounded-3xl p-6 sm:p-8 shadow-xl border border-emerald-800/40 relative overflow-hidden">
           <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-6 relative z-10">
-            
+
             <div className="space-y-3 flex-1">
               <div className="flex items-center gap-2 flex-wrap">
                 {isCompleted ? (
@@ -245,7 +274,7 @@ function ClassDetailContent() {
 
               <div className="space-y-1">
                 <h1 className="text-xl sm:text-2xl font-black text-white">
-                  {isTeacherView 
+                  {isTeacherView
                     ? (isAr ? `جلسة الطالب: ${partnerNameAr}` : `Student: ${partnerNameEn}`)
                     : (isAr ? `مع الشيخ: ${partnerNameAr}` : `With: ${partnerNameEn}`)}
                 </h1>
@@ -273,7 +302,10 @@ function ClassDetailContent() {
                   </a>
                 ) : isTeacherView ? (
                   <button
-                    onClick={() => setIsEditingMeetUrl(true)}
+                    onClick={() => {
+                      setMeetUrlDraft(lesson.googleMeetUrl || '');
+                      meetUrlInputRef.current?.focus();
+                    }}
                     className="flex-1 sm:flex-none px-6 py-3.5 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs shadow-xl flex items-center justify-center gap-2 transition-all cursor-pointer"
                   >
                     <Video className="w-4 h-4" />
@@ -315,14 +347,14 @@ function ClassDetailContent() {
                 </h3>
               </div>
               <span className="text-[10px] text-amber-900 font-bold bg-amber-200 px-3 py-1 rounded-full">
-                {isAr ? `ساعات المعلم: ${assignedTeacher.workingHoursStart || '12:00'} - ${assignedTeacher.workingHoursEnd || '18:00'}` : `Hours: ${assignedTeacher.workingHoursStart} - ${assignedTeacher.workingHoursEnd}`}
+                {isAr ? 'أوقات المعلم: ' : 'Teacher availability: '}{formatAvailabilityRanges(assignedTeacher.availabilityRanges, assignedTeacher.workingHoursStart, assignedTeacher.workingHoursEnd, isAr, assignedTeacher.availabilityByDay)}
               </span>
             </div>
 
             <form onSubmit={handleRescheduleSubmit} className="space-y-4">
               <TeacherDatePicker
                 selectedDate={newDateInput}
-                onSelectDate={setNewDateInput}
+                onSelectDate={date => { setNewDateInput(date); setSelectedSlot(''); setRescheduleError(''); }}
                 workingDaysAr={assignedTeacher.workingDaysAr}
                 isAr={isAr}
               />
@@ -367,7 +399,12 @@ function ClassDetailContent() {
                     );
                   })}
                 </div>
+                {availabilityLoading && <p role="status" className="text-sm text-slate-500">{isAr ? 'جارٍ التحقق من الحجوزات…' : 'Checking existing bookings…'}</p>}
+                {availabilityError && <p role="alert" className="text-sm font-medium text-red-700">{availabilityError}</p>}
+                {teacherSlots.length === 0 && <p className="text-xs text-slate-600">{isAr ? 'لا توجد أوقات متاحة في هذا اليوم.' : 'No available times on this day.'}</p>}
               </div>
+
+              {rescheduleError && <p role="alert" className="text-sm font-medium text-red-700">{rescheduleError}</p>}
 
               <div className="flex items-center justify-end gap-3 pt-2">
                 <button
@@ -379,7 +416,7 @@ function ClassDetailContent() {
                 </button>
                 <button
                   type="submit"
-                  disabled={!isTeacherWorkingDay}
+                  disabled={!isTeacherWorkingDay || availabilityLoading || Boolean(availabilityError) || teacherSlots.every(slot => slot.isBooked)}
                   className={`px-6 py-2.5 rounded-xl font-black text-xs shadow-xs flex items-center gap-1.5 transition-all ${
                     isTeacherWorkingDay
                       ? 'gold-gradient-bg text-emerald-950 hover:brightness-105 cursor-pointer'
@@ -396,12 +433,12 @@ function ClassDetailContent() {
 
         {/* 4. MAIN CONTENT 2-COLUMN GRID */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-          
+
           {/* ========================================== */}
           {/* LEFT COLUMN: CURRICULUM & VIRTUAL ROOM     */}
           {/* ========================================== */}
           <div className="lg:col-span-8 space-y-6">
-            
+
             {/* Quran Curriculum Target Card */}
             <div className="bg-white rounded-3xl p-6 sm:p-7 border border-slate-200 shadow-sm space-y-4">
               <div className="flex items-center justify-between border-b border-slate-100 pb-4">
@@ -412,17 +449,17 @@ function ClassDetailContent() {
                   </h3>
                 </div>
                 <span className="text-xs font-bold text-slate-500 bg-slate-100 px-3 py-1 rounded-full">
-                  {isAr ? 'تلاوة وحفظ وتجويد' : 'Recitation & Tajweed'}
+                  {lesson.isOrientationSession ? (isAr ? 'جلسة تعريفية' : 'Orientation') : (lesson.surahTargetAr?.includes('الحفظ') || student.quranGoal?.track === 'HIFZ_NEW') ? (isAr ? 'حفظ القرآن' : 'Memorization') : student.quranGoal?.track === 'IJAZAH_REVIEW' ? (isAr ? 'مراجعة' : 'Revision') : (isAr ? 'تلاوة وتجويد' : 'Recitation & Tajweed')}
                 </span>
               </div>
 
-              {lesson.surahTargetAr ? (
+              {(lesson.surahTargetAr || lesson.surahTargetEn) ? (
                 <div className="bg-emerald-50/70 border border-emerald-200/80 p-5 rounded-2xl space-y-2">
                   <span className="text-[11px] font-extrabold text-emerald-900 bg-emerald-200/70 px-2.5 py-0.5 rounded-md inline-block">
                     {isAr ? 'المقرر المحدد' : 'Selected Scope'}
                   </span>
                   <p className="text-base sm:text-lg font-bold text-emerald-950 font-serif leading-relaxed">
-                    {lesson.surahTargetAr}
+                    {localizeQuranScope(isAr ? (lesson.surahTargetAr || lesson.surahTargetEn) : (lesson.surahTargetEn || lesson.surahTargetAr), isAr)}
                   </p>
                 </div>
               ) : (
@@ -474,21 +511,23 @@ function ClassDetailContent() {
                     )}
                   </div>
 
-                  <form onSubmit={handleSaveMeetUrlSubmit} className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                  {meetError && <p role="alert" className="text-rose-700 text-xs">{meetError}</p>}
+              <form onSubmit={handleSaveMeetUrlSubmit} className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
                     <input
+                      ref={meetUrlInputRef}
                       type="url"
-                      value={meetUrlInput}
-                      onChange={(e) => setMeetUrlInput(e.target.value)}
+                      value={meetUrlDraft}
+                      onChange={(e) => setMeetUrlDraft(e.target.value)}
                       placeholder="https://meet.google.com/xxx-xxxx-xxx"
                       required
                       className="flex-1 p-3 rounded-xl border border-slate-300 bg-white text-xs font-mono text-slate-900 shadow-xs focus:ring-2 focus:ring-emerald-600 focus:border-emerald-600"
                     />
                     <button
-                      type="submit"
+                      type="submit" disabled={savingMeet}
                       className="px-5 py-3 rounded-xl emerald-gradient-bg text-white font-black text-xs shadow-md hover:brightness-110 flex items-center justify-center gap-1.5 shrink-0 cursor-pointer"
                     >
                       <Save className="w-4 h-4" />
-                      <span>{isAr ? 'حفظ الرابط' : 'Save Link'}</span>
+                      <span>{savingMeet ? (isAr ? 'جارٍ الحفظ...' : 'Saving…') : (isAr ? 'حفظ الرابط' : 'Save Link')}</span>
                     </button>
                   </form>
                   <p className="text-[11px] text-slate-500 font-medium">
@@ -563,6 +602,17 @@ function ClassDetailContent() {
                 </div>
 
                 <form onSubmit={handleCompleteSubmit} className="space-y-3">
+                  <label className="block text-xs font-bold text-emerald-950">
+                    {isAr ? 'نطاق الحصة / الآيات المقررة' : 'Class scope / assigned verses'}
+                    <textarea
+                      value={classScope ?? localizeQuranScope(isAr ? (lesson.surahTargetAr || lesson.surahTargetEn) : (lesson.surahTargetEn || lesson.surahTargetAr), isAr)}
+                      onChange={(e) => setClassScope(e.target.value)}
+                      placeholder={isAr ? 'مثال: سورة الملك، الآيات 1–10' : 'Example: Surah Al-Mulk, verses 1–10'}
+                      rows={2}
+                      maxLength={1000}
+                      className="mt-1 w-full p-3 rounded-xl border border-emerald-300 text-xs font-semibold text-slate-900 bg-white"
+                    />
+                  </label>
                   <textarea
                     value={completionNotes}
                     onChange={(e) => setCompletionNotes(e.target.value)}
@@ -570,12 +620,15 @@ function ClassDetailContent() {
                     rows={3}
                     className="w-full p-3 rounded-xl border border-emerald-300 text-xs font-semibold text-slate-900 bg-white"
                   />
+                  {!completionAvailable && <p className="text-xs text-slate-600">{isAr ? 'يمكن اعتماد الحصة بعد انتهائها.' : 'You can complete this class after its scheduled end.'}</p>}
+                  {completionError && <p role="alert" className="text-xs font-bold text-rose-700">{completionError}</p>}
                   <button
                     type="submit"
+                    disabled={isCompleting || !completionAvailable}
                     className="w-full py-3 rounded-xl emerald-gradient-bg text-white font-black text-xs shadow-md hover:brightness-110 transition-all cursor-pointer flex items-center justify-center gap-2"
                   >
                     <CheckCircle2 className="w-4 h-4 text-amber-400" />
-                    <span>{isAr ? 'تأكيد اكتمال الحصة وتوثيق الإنجاز' : 'Mark Lesson Completed'}</span>
+                    <span>{isCompleting ? (isAr ? 'جارٍ الحفظ...' : 'Saving...') : (isAr ? 'تأكيد اكتمال الحصة وتوثيق الإنجاز' : 'Mark Lesson Completed')}</span>
                   </button>
                 </form>
               </div>
@@ -587,17 +640,17 @@ function ClassDetailContent() {
           {/* RIGHT SIDEBAR: INSTRUCTOR & SESSION SPECS  */}
           {/* ========================================== */}
           <div className="lg:col-span-4 space-y-6">
-            
+
             {/* Instructor Profile Card */}
             <div className="bg-white rounded-3xl p-6 border border-slate-200 shadow-sm space-y-4">
               <div className="flex items-center justify-between border-b border-slate-100 pb-3">
                 <span className="text-xs font-bold text-slate-500">
                   {isTeacherView ? (isAr ? 'الطالب المسجل' : 'Enrolled Student') : (isAr ? 'المعلم المشرف' : 'Assigned Instructor')}
                 </span>
-                <span className="bg-amber-50 text-amber-900 border border-amber-200 text-[10px] font-black px-2 py-0.5 rounded-md flex items-center gap-1">
+                {!isTeacherView && <span className="bg-amber-50 text-amber-900 border border-amber-200 text-[10px] font-black px-2 py-0.5 rounded-md flex items-center gap-1">
                   <Star className="w-3 h-3 fill-amber-400 text-amber-400" />
-                  <span>{assignedTeacher.rating}</span>
-                </span>
+                  <span>{assignedTeacher.reviewsCount ? assignedTeacher.rating : (isAr ? 'لا توجد تقييمات' : 'No reviews')}</span>
+                </span>}
               </div>
 
               <div className="flex items-center gap-3.5">
@@ -607,13 +660,37 @@ function ClassDetailContent() {
                     {isAr ? partnerNameAr : partnerNameEn}
                   </h4>
                   <p className="text-xs text-slate-500 font-semibold line-clamp-1">
-                    {isAr ? assignedTeacher.titleAr : assignedTeacher.titleEn}
+                    {isTeacherView ? (isAr ? 'طالب مسجل' : 'Enrolled student') : (isAr ? assignedTeacher.titleAr : assignedTeacher.titleEn)}
                   </p>
                 </div>
               </div>
 
+              {!isTeacherView && assignedTeacher && (
+                <div className="border-t border-slate-100 pt-4 space-y-3 text-xs">
+                  <div className="flex flex-wrap gap-2">
+                    <span className="rounded-full bg-emerald-50 px-3 py-1 font-bold text-emerald-900">{assignedTeacher.experienceYears} {isAr ? 'سنة خبرة' : 'years experience'}</span>
+                    {assignedTeacher.languagesSpoken?.map(language => <span key={language} className="rounded-full bg-slate-100 px-3 py-1 font-semibold text-slate-700">{localizeLanguage(language, isAr)}</span>)}
+                  </div>
+                  {assignedTeacher.bioAr && <p className="leading-relaxed text-slate-600">{isAr ? assignedTeacher.bioAr : (assignedTeacher.bioEn || assignedTeacher.bioAr)}</p>}
+                  {(assignedTeacher.specializationsAr?.length ?? 0) > 0 && <p className="text-slate-700"><strong>{isAr ? 'التخصصات:' : 'Specialties:'}</strong> {(isAr ? assignedTeacher.specializationsAr : (assignedTeacher.specializationsEn.length ? assignedTeacher.specializationsEn : assignedTeacher.specializationsAr)).map(specialty => localizeSpecialty(specialty, isAr)).join(' • ')}</p>}
+                  {assignedTeacher.ijazahDetailsAr && <p className="text-emerald-900"><strong>{isAr ? 'الإجازة:' : 'Certification:'}</strong> {isAr ? assignedTeacher.ijazahDetailsAr : (assignedTeacher.ijazahDetailsEn || assignedTeacher.ijazahDetailsAr)}</p>}
+                </div>
+              )}
+
+              {role === 'STUDENT' && isCompleted && (
+                <div className="border-t border-slate-100 pt-4">
+                  {existingClassReview ? (
+                    <button onClick={() => setShowReviewModal(true)} className="w-full rounded-xl border border-emerald-200 px-4 py-3 text-xs font-bold text-emerald-800">{isAr ? 'تعديل تقييم هذه الحصة' : 'Edit your review'}</button>
+                  ) : (
+                    <button onClick={() => setShowReviewModal(true)} className="w-full rounded-xl bg-amber-400 px-4 py-3 text-xs font-black text-emerald-950 hover:bg-amber-300">
+                      <Star className="mr-1 inline h-4 w-4 fill-current" />{isAr ? 'قيّم هذه الحصة' : 'Review this class'}
+                    </button>
+                  )}
+                </div>
+              )}
+
               <div className="bg-slate-50 p-3 rounded-2xl border border-slate-200/80 text-[11px] text-slate-600 font-medium space-y-1">
-                <div>{isAr ? `الساعات المتاحة: ${assignedTeacher.workingHoursStart || '12:00'} إلى ${assignedTeacher.workingHoursEnd || '18:00'}` : `Hours: ${assignedTeacher.workingHoursStart} - ${assignedTeacher.workingHoursEnd}`}</div>
+                <div>{isAr ? 'الأوقات المتاحة: ' : 'Available times: '}{formatAvailabilityRanges(assignedTeacher.availabilityRanges, assignedTeacher.workingHoursStart, assignedTeacher.workingHoursEnd, isAr, assignedTeacher.availabilityByDay)}</div>
                 <div>{isAr ? 'جلسة فردية مباشرة 1-على-1' : 'Individual 1-on-1 Session'}</div>
               </div>
             </div>
@@ -639,7 +716,7 @@ function ClassDetailContent() {
               <div className="flex items-center justify-between py-1">
                 <span className="text-slate-500 font-bold">{isAr ? 'نوع الحصة:' : 'Type:'}</span>
                 <span className="font-bold text-slate-800">
-                  {isExtraClass ? (isAr ? 'حصة إضافية' : 'Extra Class') : (isAr ? 'ضمن الباقة الشهرية' : 'Monthly Plan')}
+                  {lesson.isOrientationSession ? (isAr ? 'جلسة تعريفية' : 'Orientation') : isExtraClass ? (isAr ? 'حصة إضافية' : 'Extra Class') : (isAr ? 'ضمن الباقة الشهرية' : 'Monthly Plan')}
                 </span>
               </div>
             </div>
@@ -649,6 +726,8 @@ function ClassDetailContent() {
         </div>
 
       </div>
+      {showReviewModal && lesson && <ReviewModal teacherId={lesson.teacherId} lessonId={lesson.id} teacherName={isAr ? partnerNameAr : partnerNameEn} onClose={() => setShowReviewModal(false)}
+            initialReview={existingClassReview} />}
     </div>
   );
 }

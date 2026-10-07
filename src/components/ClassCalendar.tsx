@@ -1,31 +1,28 @@
 'use client';
 
+import { AccessibleModal } from '@/components/AccessibleModal';
+
 import React, { useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { Lesson, Role } from '../types';
+import { localizeQuranScope } from '@/utils/localization';
+import { getLessonHour } from '@/utils/timeFormat';
 import { useApp } from '../context/AppContext';
 import { AvatarBadge } from './AvatarBadge';
-import { 
-  Calendar as CalendarIcon, 
-  ChevronLeft, 
-  ChevronRight, 
-  Clock, 
-  Video, 
-  ExternalLink, 
-  CheckCircle2, 
+import {
+  Calendar as CalendarIcon,
+  ChevronLeft,
+  ChevronRight,
+  Clock,
+  Video,
+  ExternalLink,
+  CheckCircle2,
   Sparkles,
-  BookOpen,
-  Filter,
   List,
   Grid,
   X,
   RotateCcw,
-  CalendarCheck,
-  ChevronRight as ChevronRightIcon,
-  ChevronLeft as ChevronLeftIcon,
-  CalendarDays,
-  Sun,
-  Plus
+  CalendarCheck
 } from 'lucide-react';
 
 interface ClassCalendarProps {
@@ -40,8 +37,11 @@ export const ClassCalendar: React.FC<ClassCalendarProps> = ({
   userRole
 }) => {
   const router = useRouter();
-  const { language, student, teachers } = useApp();
+  const { language, student, teachers, refreshData } = useApp();
   const isAr = language === 'ar';
+  const [refreshing, setRefreshing] = useState(false);
+  const [refreshError, setRefreshError] = useState('');
+  const refresh = async () => { if (refreshing) return; setRefreshing(true); setRefreshError(''); try { await refreshData(); } catch (error) { setRefreshError(error instanceof Error ? error.message : 'Unable to refresh classes.'); } finally { setRefreshing(false); } };
   const assignedTeacher = useMemo(() => {
     return teachers.find(t => t.id === student?.assignedTeacherId) || teachers[0];
   }, [teachers, student]);
@@ -62,24 +62,6 @@ export const ClassCalendar: React.FC<ClassCalendarProps> = ({
 
   const prevMonth = () => {
     setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1));
-  };
-
-  // Day navigation for Teams-style view
-  const prevDay = () => {
-    const d = new Date(selectedDayDate);
-    d.setDate(d.getDate() - 1);
-    setSelectedDayDate(d);
-  };
-
-  const nextDay = () => {
-    const d = new Date(selectedDayDate);
-    d.setDate(d.getDate() + 1);
-    setSelectedDayDate(d);
-  };
-
-  const jumpToToday = () => {
-    setCurrentDate(new Date());
-    setSelectedDayDate(new Date());
   };
 
   const year = currentDate.getFullYear();
@@ -143,28 +125,30 @@ export const ClassCalendar: React.FC<ClassCalendarProps> = ({
 
   const isSelectedDayToday = selectedDayDateStr === todayStr;
 
-  const formattedDayTitle = useMemo(() => {
+  const formattedDayTitle = (() => {
     const dayNameAr = daysOfWeekAr[selectedDayDate.getDay()];
     const dayNameEn = daysOfWeekEn[selectedDayDate.getDay()];
     const dayNum = selectedDayDate.getDate();
     const monthNameAr = monthNamesAr[selectedDayDate.getMonth()];
     const monthNameEn = monthNamesEn[selectedDayDate.getMonth()];
     return isAr ? `${dayNameAr}، ${dayNum} ${monthNameAr}` : `${dayNameEn}, ${monthNameEn} ${dayNum}`;
-  }, [selectedDayDate, isAr]);
+  })();
 
   const dayLessonsForTeamsView = useMemo(() => {
     return filteredLessons.filter(l => l.date === selectedDayDateStr);
   }, [filteredLessons, selectedDayDateStr]);
 
   const currentRealHour = useMemo(() => new Date().getHours(), []);
-  const HOURS_TIMELINE = Array.from({ length: 16 }, (_, i) => i + 7); // 7 AM to 10 PM
+  const HOURS_TIMELINE = Array.from({ length: 24 }, (_, i) => i); // Include every supported availability hour.
 
   return (
     <div className="bg-white rounded-3xl p-3.5 sm:p-7 border border-slate-200 shadow-sm space-y-5 sm:space-y-6">
-      
+
+      {refreshError && <p role="alert" className="text-rose-700 text-xs">{refreshError}</p>}
+      <button disabled={refreshing} onClick={refresh} className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-bold text-emerald-800">{refreshing ? (isAr ? 'جارٍ التحديث...' : 'Refreshing…') : (isAr ? 'تحديث الحصص' : 'Refresh classes')}</button>
       {/* 1. TOP HEADER & CONTROLS */}
       <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 border-b border-slate-100 pb-4 sm:pb-5">
-        
+
         {/* Title & Filter Chips */}
         <div className="space-y-2 w-full md:w-auto">
           <div className="flex items-center gap-2.5">
@@ -201,8 +185,8 @@ export const ClassCalendar: React.FC<ClassCalendarProps> = ({
                   : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
               }`}
             >
-              {isAr 
-                ? `القادمة (${lessons.filter(l => l.status === 'SCHEDULED').length})` 
+              {isAr
+                ? `القادمة (${lessons.filter(l => l.status === 'SCHEDULED').length})`
                 : `Upcoming (${lessons.filter(l => l.status === 'SCHEDULED').length})`}
             </button>
             <button
@@ -213,8 +197,8 @@ export const ClassCalendar: React.FC<ClassCalendarProps> = ({
                   : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
               }`}
             >
-              {isAr 
-                ? `المكتملة (${lessons.filter(l => l.status === 'COMPLETED').length})` 
+              {isAr
+                ? `المكتملة (${lessons.filter(l => l.status === 'COMPLETED').length})`
                 : `Completed (${lessons.filter(l => l.status === 'COMPLETED').length})`}
             </button>
           </div>
@@ -260,7 +244,7 @@ export const ClassCalendar: React.FC<ClassCalendarProps> = ({
       {/* 2. TODAY's DAILY TIMELINE VIEW MODE */}
       {viewMode === 'DAY' && (
         <div className="space-y-5 animate-in fade-in">
-          
+
           {/* Today Banner */}
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 bg-gradient-to-r from-emerald-950 via-slate-900 to-slate-950 p-4 sm:p-5 rounded-3xl text-white shadow-lg border border-emerald-800/40">
             <div className="flex items-center gap-3">
@@ -278,8 +262,8 @@ export const ClassCalendar: React.FC<ClassCalendarProps> = ({
                   </span>
                 </div>
                 <p className="text-xs text-emerald-200/80 font-medium">
-                  {isAr 
-                    ? `مواعيد الحصص المباشرة ليومنا هذا • إجمالي ${dayLessonsForTeamsView.length} حصة` 
+                  {isAr
+                    ? `مواعيد الحصص المباشرة ليومنا هذا • إجمالي ${dayLessonsForTeamsView.length} حصة`
                     : `Live sessions for today • ${dayLessonsForTeamsView.length} classes scheduled`}
                 </p>
               </div>
@@ -291,7 +275,7 @@ export const ClassCalendar: React.FC<ClassCalendarProps> = ({
                 className="px-3.5 py-2 rounded-xl gold-gradient-bg text-emerald-950 font-black text-xs shadow-xs hover:brightness-105 cursor-pointer flex items-center gap-1.5"
               >
                 <RotateCcw className="w-3.5 h-3.5" />
-                <span>{isAr ? 'تحديث اليوم' : 'Refresh Today'}</span>
+                <span>{isAr ? 'اليوم' : 'Today'}</span>
               </button>
             </div>
           </div>
@@ -307,10 +291,7 @@ export const ClassCalendar: React.FC<ClassCalendarProps> = ({
 
                 // Filter lessons occurring in this hour slot
                 const hourLessons = dayLessonsForTeamsView.filter(l => {
-                  const rawHour = parseInt(l.time.split(':')[0] || '12', 10);
-                  const isPM = l.time.includes('م') || l.time.includes('PM');
-                  const normalizedHour = (isPM && rawHour < 12) ? rawHour + 12 : (!isPM && rawHour === 12) ? 0 : rawHour;
-                  return normalizedHour === hour;
+                  return getLessonHour(l.time) === hour;
                 });
 
                 const isCurrentHour = isSelectedDayToday && currentRealHour === hour;
@@ -342,15 +323,15 @@ export const ClassCalendar: React.FC<ClassCalendarProps> = ({
 
                       {hourLessons.length > 0 ? (
                         hourLessons.map((lesson) => {
-                          const partnerNameAr = userRole === 'TEACHER' 
-                            ? (lesson.studentNameAr || 'طالب') 
+                          const partnerNameAr = userRole === 'TEACHER'
+                            ? (lesson.studentNameAr || 'طالب')
                             : (lesson.teacherNameAr || assignedTeacher?.nameAr || 'الشيخ المعلم');
-                          const partnerNameEn = userRole === 'TEACHER' 
-                            ? (lesson.studentNameEn || 'Student') 
+                          const partnerNameEn = userRole === 'TEACHER'
+                            ? (lesson.studentNameEn || 'Student')
                             : (lesson.teacherNameEn || assignedTeacher?.nameEn || 'Instructor');
                           const isCompleted = lesson.status === 'COMPLETED';
-                          const isExtraClass = lesson.id.startsWith('les-ext') || 
-                            (lesson.notes && lesson.notes.includes('إضافية')) || 
+                          const isExtraClass = lesson.id.startsWith('les-ext') ||
+                            (lesson.notes && lesson.notes.includes('إضافية')) ||
                             (lesson.surahTargetAr && lesson.surahTargetAr.includes('إضافية'));
                           const hasMeetLink = lesson.googleMeetUrl && lesson.googleMeetUrl.trim() !== '';
 
@@ -447,7 +428,7 @@ export const ClassCalendar: React.FC<ClassCalendarProps> = ({
                                     ? 'bg-slate-800/80 border-slate-700 text-emerald-300'
                                     : 'bg-white/80 border-slate-200 text-slate-800'
                                 }`}>
-                                  <span className="font-bold">{isAr ? 'المقرر:' : 'Scope:'}</span> {lesson.surahTargetAr}
+                                  <span className="font-bold">{isAr ? 'المقرر:' : 'Scope:'}</span> {localizeQuranScope(isAr ? lesson.surahTargetAr : (lesson.surahTargetEn || lesson.surahTargetAr), isAr)}
                                 </div>
                               )}
                             </div>
@@ -458,10 +439,10 @@ export const ClassCalendar: React.FC<ClassCalendarProps> = ({
                           <span>{isAr ? 'لا توجد حصص مجدولة في هذه الساعة' : 'No classes scheduled for this hour'}</span>
                           {userRole === 'TEACHER' && (
                             <button
-                              onClick={() => router.push('/student/plan-builder')}
+                              onClick={() => router.push('/teacher/students')}
                               className="text-[11px] text-emerald-700 font-bold hover:underline cursor-pointer"
                             >
-                              {isAr ? '+ جدولة حلقة' : '+ Schedule'}
+                              {isAr ? 'إدارة الطلاب' : 'Manage students'}
                             </button>
                           )}
                         </div>
@@ -478,7 +459,7 @@ export const ClassCalendar: React.FC<ClassCalendarProps> = ({
       {/* 3. CALENDAR VIEW MODE */}
       {viewMode === 'CALENDAR' && (
         <div className="space-y-4">
-          
+
           {/* Month Navigation Strip */}
           <div className="flex items-center justify-between bg-slate-50/90 px-3 sm:px-4 py-2.5 rounded-2xl border border-slate-200/80">
             <button
@@ -529,14 +510,18 @@ export const ClassCalendar: React.FC<ClassCalendarProps> = ({
               const isToday = dateString === todayStr;
               const hasLessons = dayLessons.length > 0;
               const isAllCompleted = hasLessons && dayLessons.every(l => l.status === 'COMPLETED');
-              const hasExtraClass = dayLessons.some(l => 
-                l.id.startsWith('les-ext') || 
-                (l.notes && l.notes.includes('إضافية')) || 
+              const hasExtraClass = dayLessons.some(l =>
+                l.id.startsWith('les-ext') ||
+                (l.notes && l.notes.includes('إضافية')) ||
                 (l.surahTargetAr && l.surahTargetAr.includes('إضافية'))
               );
 
               return (
-                <div
+                <button
+                  type="button"
+                  aria-label={`${new Date(`${dateString}T12:00:00`).toLocaleDateString(isAr ? 'ar-SA' : 'en-GB', { dateStyle: 'full' })}: ${dayLessons.length} ${isAr ? 'حصة' : 'classes'}`}
+                  aria-pressed={selectedDateModal === dateString}
+                  disabled={!hasLessons}
                   key={dateString}
                   onClick={() => handleDayClick(dateString, hasLessons)}
                   className={`h-16 sm:h-24 p-1.5 sm:p-2.5 rounded-xl sm:rounded-2xl border transition-all flex flex-col justify-between ${
@@ -555,8 +540,8 @@ export const ClassCalendar: React.FC<ClassCalendarProps> = ({
                 >
                   <div className="flex items-center justify-between">
                     <span className={`text-[10px] sm:text-xs font-black px-1 sm:px-1.5 py-0.2 sm:py-0.5 rounded-md sm:rounded-lg ${
-                      isToday 
-                        ? 'bg-emerald-800 text-white shadow-2xs' 
+                      isToday
+                        ? 'bg-emerald-800 text-white shadow-2xs'
                         : isAllCompleted
                         ? 'text-emerald-800 font-black'
                         : 'text-slate-700'
@@ -592,7 +577,7 @@ export const ClassCalendar: React.FC<ClassCalendarProps> = ({
                   ) : (
                     <span className="text-[9px] text-slate-300 font-medium hidden sm:inline">--</span>
                   )}
-                </div>
+                </button>
               );
             })}
           </div>
@@ -605,15 +590,15 @@ export const ClassCalendar: React.FC<ClassCalendarProps> = ({
           {filteredLessons.length > 0 ? (
             <div className="space-y-3">
               {filteredLessons.map((lesson) => {
-                const partnerNameAr = userRole === 'TEACHER' 
-                  ? (lesson.studentNameAr || 'طالب') 
+                const partnerNameAr = userRole === 'TEACHER'
+                  ? (lesson.studentNameAr || 'طالب')
                   : (lesson.teacherNameAr || assignedTeacher?.nameAr || 'الشيخ المعلم');
-                const partnerNameEn = userRole === 'TEACHER' 
-                  ? (lesson.studentNameEn || 'Student') 
+                const partnerNameEn = userRole === 'TEACHER'
+                  ? (lesson.studentNameEn || 'Student')
                   : (lesson.teacherNameEn || assignedTeacher?.nameEn || 'Instructor');
                 const isCompleted = lesson.status === 'COMPLETED';
-                const isExtraClass = lesson.id.startsWith('les-ext') || 
-                  (lesson.notes && lesson.notes.includes('إضافية')) || 
+                const isExtraClass = lesson.id.startsWith('les-ext') ||
+                  (lesson.notes && lesson.notes.includes('إضافية')) ||
                   (lesson.surahTargetAr && lesson.surahTargetAr.includes('إضافية'));
 
                 return (
@@ -656,7 +641,7 @@ export const ClassCalendar: React.FC<ClassCalendarProps> = ({
                           </span>
                           {lesson.surahTargetAr && (
                             <span className="text-emerald-800 font-serif">
-                              {lesson.surahTargetAr}
+                              {localizeQuranScope(isAr ? lesson.surahTargetAr : (lesson.surahTargetEn || lesson.surahTargetAr), isAr)}
                             </span>
                           )}
                         </div>
@@ -715,9 +700,9 @@ export const ClassCalendar: React.FC<ClassCalendarProps> = ({
 
       {/* 5. INTERACTIVE DAY CLASSES MODAL (FOR MONTH VIEW CLICK) */}
       {selectedDateModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in">
+        <AccessibleModal onClose={() => setSelectedDateModal(null)} aria-label={isAr ? "حصص اليوم" : "Day classes"} className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in">
           <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-slate-100 space-y-5">
-            
+
             {/* Modal Header */}
             <div className="flex items-center justify-between border-b border-slate-100 pb-4">
               <div className="flex items-center gap-3">
@@ -734,7 +719,7 @@ export const ClassCalendar: React.FC<ClassCalendarProps> = ({
                 </div>
               </div>
               <button
-                onClick={() => setSelectedDateModal(null)}
+                aria-label={isAr ? "إغلاق" : "Close"} onClick={() => setSelectedDateModal(null)}
                 className="p-2 rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-700 cursor-pointer transition-colors"
               >
                 <X className="w-5 h-5" />
@@ -744,15 +729,15 @@ export const ClassCalendar: React.FC<ClassCalendarProps> = ({
             {/* Modal Classes List */}
             <div className="space-y-3 max-h-72 overflow-y-auto">
               {selectedDayLessons.map((lesson) => {
-                const partnerNameAr = userRole === 'TEACHER' 
-                  ? (lesson.studentNameAr || 'طالب') 
+                const partnerNameAr = userRole === 'TEACHER'
+                  ? (lesson.studentNameAr || 'طالب')
                   : (lesson.teacherNameAr || assignedTeacher?.nameAr || 'الشيخ المعلم');
-                const partnerNameEn = userRole === 'TEACHER' 
-                  ? (lesson.studentNameEn || 'Student') 
+                const partnerNameEn = userRole === 'TEACHER'
+                  ? (lesson.studentNameEn || 'Student')
                   : (lesson.teacherNameEn || assignedTeacher?.nameEn || 'Instructor');
                 const isCompleted = lesson.status === 'COMPLETED';
-                const isExtraClass = lesson.id.startsWith('les-ext') || 
-                  (lesson.notes && lesson.notes.includes('إضافية')) || 
+                const isExtraClass = lesson.id.startsWith('les-ext') ||
+                  (lesson.notes && lesson.notes.includes('إضافية')) ||
                   (lesson.surahTargetAr && lesson.surahTargetAr.includes('إضافية'));
 
                 return (
@@ -797,7 +782,7 @@ export const ClassCalendar: React.FC<ClassCalendarProps> = ({
 
                     {lesson.surahTargetAr && (
                       <div className="text-xs text-slate-700 bg-white/80 p-2.5 rounded-xl border border-slate-200/60 font-semibold leading-relaxed">
-                        <span className="font-bold text-slate-900">{isAr ? 'المقرر:' : 'Target:'}</span> {lesson.surahTargetAr}
+                        <span className="font-bold text-slate-900">{isAr ? 'المقرر:' : 'Target:'}</span> {localizeQuranScope(isAr ? lesson.surahTargetAr : (lesson.surahTargetEn || lesson.surahTargetAr), isAr)}
                       </div>
                     )}
 
@@ -853,7 +838,7 @@ export const ClassCalendar: React.FC<ClassCalendarProps> = ({
 
             <div className="pt-2">
               <button
-                onClick={() => setSelectedDateModal(null)}
+                aria-label={isAr ? "إغلاق" : "Close"} onClick={() => setSelectedDateModal(null)}
                 className="w-full py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition-colors cursor-pointer"
               >
                 {isAr ? 'إغلاق' : 'Close'}
@@ -861,7 +846,7 @@ export const ClassCalendar: React.FC<ClassCalendarProps> = ({
             </div>
 
           </div>
-        </div>
+        </AccessibleModal>
       )}
 
     </div>

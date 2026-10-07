@@ -1,93 +1,94 @@
-import { 
-  SubscriptionPlan, 
-  Teacher, 
-  StudentProfile, 
-  TeacherProfile, 
-  Lesson, 
-  Review, 
+import {
+  SubscriptionPlan,
+  Teacher,
+  StudentProfile,
+  TeacherProfile,
+  Lesson,
+  Review,
   NotificationItem,
   BankInfo,
   LearningGoalTrack
 } from '../types';
+import { generateTimeSlots } from '../utils/timeSlots';
 
 export const INITIAL_PLANS: SubscriptionPlan[] = [
   {
     id: 'plan-basic',
-    titleAr: 'الباقة المجانية',
-    titleEn: 'Free Plan',
-    subtitleAr: '4 حصص شهرياً مجاناً (حصة أسبوعياً) لتجربة التعلم مع المعلمين المجازين',
-    subtitleEn: '4 classes monthly for Free (1 class/week) to experience learning with certified scholars',
-    lessonsPerMonth: 4,
-    totalHours: 2.0,
+    titleAr: 'باقة التأسيس',
+    titleEn: 'Starter Plan',
+    subtitleAr: '٤ حصص أسبوعياً، مدة كل حصة ٥ دقائق',
+    subtitleEn: '4 classes each week, 5 minutes per class',
+    lessonsPerMonth: 16,
+    totalHours: 4 / 3,
     hasFreeOrientationClass: true,
-    lessonDurationMinutes: 30,
-    priceMonthlySar: 0,
+    lessonDurationMinutes: 5,
+    priceMonthlySar: 30,
     featuresAr: [
-      '4 حصص فردية مباشرة مجانية شهرياً',
-      '+1 حصة ترحيبية وتأسيسية مجانية لتحديد المستوى',
-      'جلسة أسبوعية لمدة 30 دقيقة',
-      'تحديد السور المستهدفة وجدول المواعيد',
-      'تفعيل فوري ومجاني بدون إيصال تحويل بنكي'
+      '٤ حصص أسبوعياً (١٦ حصة شهرياً)',
+      '٥ دقائق لكل حصة',
+      'خطة تعلم ومتابعة مع المعلم',
+      'جلسة تعريفية مجانية',
+      'جدول أسبوعي مرن'
     ],
     featuresEn: [
-      '4 1-on-1 private live sessions per month for Free',
-      '+1 Free welcoming & orientation session for level assessment',
-      '30-minute weekly session',
-      'Target Surah selection & custom timetable',
-      'Instant free activation without bank transfer'
+      '4 classes each week (16 per month)',
+      '5 minutes per class',
+      'Personal learning plan and teacher follow-up',
+      'Free orientation session',
+      'Flexible weekly schedule'
     ]
   },
   {
     id: 'plan-standard',
     titleAr: 'الباقة الأساسية',
     titleEn: 'Basic Plan',
-    subtitleAr: '8 حصص شهرياً (حصتان أسبوعياً) لبناء حفظ متقن ومستمر',
-    subtitleEn: '8 classes monthly (2 classes/week) for structured memorization & mastery',
-    lessonsPerMonth: 8,
-    totalHours: 4.0,
+    subtitleAr: '٤ حصص أسبوعياً، مدة كل حصة ١٠ دقائق',
+    subtitleEn: '4 classes each week, 10 minutes per class',
+    lessonsPerMonth: 16,
+    totalHours: 8 / 3,
     hasFreeOrientationClass: true,
-    lessonDurationMinutes: 30,
-    priceMonthlySar: 260,
+    lessonDurationMinutes: 10,
+    priceMonthlySar: 50,
     popular: true,
     featuresAr: [
-      '8 حصص فردية مباشرة مع معلم مجاز بالسند',
-      '+1 حصة تمهيدية وتأسيسية مجانية',
-      'حصتان أسبوعياً برابط Google Meet مباشر',
-      'خطة تسميع مخصصة حسب فهرس المصحف',
-      'إمكانية مرنة لتغيير مواعيد الحصص المجدولة'
+      '٤ حصص أسبوعياً (١٦ حصة شهرياً)',
+      '١٠ دقائق لكل حصة',
+      'خطة تسميع مخصصة',
+      'جلسة تعريفية مجانية',
+      'جدول أسبوعي مرن'
     ],
     featuresEn: [
-      '8 1-on-1 private sessions with certified scholar',
-      '+1 Free orientation session included',
-      '2 sessions per week via live Google Meet',
-      'Customized Quran page-by-page Hifz roadmap',
-      'Flexible rescheduling options for upcoming classes'
+      '4 classes each week (16 per month)',
+      '10 minutes per class',
+      'Personal Quran learning plan',
+      'Free orientation session',
+      'Flexible weekly schedule'
     ]
   },
   {
     id: 'plan-intensive',
     titleAr: 'الباقة المكثفة',
     titleEn: 'Intensive Plan',
-    subtitleAr: '12 حصة شهرياً (3 حصص أسبوعياً) لإنجاز الحفظ والإجازة بالسند المتصل',
-    subtitleEn: '12 classes monthly (3 classes/week) for accelerated Hifz & Continuous Chain Ijazah',
-    lessonsPerMonth: 12,
-    totalHours: 6.0,
+    subtitleAr: '٤ حصص أسبوعياً، مدة كل حصة ٢٠ دقيقة',
+    subtitleEn: '4 classes each week, 20 minutes per class',
+    lessonsPerMonth: 16,
+    totalHours: 16 / 3,
     hasFreeOrientationClass: true,
-    lessonDurationMinutes: 30,
-    priceMonthlySar: 360,
+    lessonDurationMinutes: 20,
+    priceMonthlySar: 100,
     featuresAr: [
-      '12 حصة فردية مباشرة مع شيوخ الإجازة',
-      '+1 حصة تمهيدية مجانية لتحديد مسار الإجازة',
-      '3 حصص أسبوعياً لمراجعة وتثبيت الأجزاء',
-      'متابعة مستمرة ومباشرة مع الشيخ المقرئ',
-      'شهادة اعتماد إنجاز عند إتمام المقرر'
+      '٤ حصص أسبوعياً (١٦ حصة شهرياً)',
+      '٢٠ دقيقة لكل حصة',
+      'خطة تسميع ومراجعة مخصصة',
+      'جلسة تعريفية مجانية',
+      'جدول أسبوعي مرن'
     ],
     featuresEn: [
-      '12 1-on-1 private sessions with senior Ijazah scholars',
-      '+1 Free orientation class for Ijazah track alignment',
-      '3 sessions weekly for rapid progress & review',
-      'Direct line of instruction with certified Sheikh',
-      'Formal completion certificate upon goal fulfillment'
+      '4 classes each week (16 per month)',
+      '20 minutes per class',
+      'Personal memorization and review plan',
+      'Free orientation session',
+      'Flexible weekly schedule'
     ]
   }
 ];
@@ -111,7 +112,7 @@ export const INITIAL_TEACHERS: Teacher[] = [
     bioAr: 'خادم للقرآن الكريم لأكثر من 18 عاماً، أشرف على تخريج أكثر من 80 حافظاً ومجازاً بالسند المتصل.',
     bioEn: 'Dedicated Quran scholar for over 18 years, having authorized over 80 students with chain certificates.',
     hourlyRateSar: 120,
-    availableSlots: ['12:00', '12:30', '13:00', '13:30', '14:00', '14:30', '15:00', '15:30', '16:00', '16:30', '17:00', '17:30'],
+    availableSlots: generateTimeSlots('12:00', '18:00'),
     workingHoursStart: '12:00',
     workingHoursEnd: '18:00',
     workingDaysAr: ['الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس'],
@@ -134,7 +135,7 @@ export const INITIAL_STUDENT: StudentProfile = {
   nextCyclePlanId: null,
   subscriptionStartDate: '2026-08-01',
   subscriptionRenewalDate: '2026-09-01',
-  remainingLessons: 8,
+  remainingLessons: 16,
   extraClassCredits: 0,
   totalLessonsCompleted: 0,
   totalHoursLearned: 0.0,
@@ -287,4 +288,3 @@ export const getQuranTrackTitle = (trackKey?: LearningGoalTrack, isAr: boolean =
   }
   return isAr ? 'مسار الحفظ الجديد والتثبيت' : 'Quran Memorization & Hifz';
 };
-
