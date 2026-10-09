@@ -20,16 +20,19 @@ Development includes demo sign-in accounts. They use the demo password `123456` 
 
 ## Production setup
 
-Set `DATABASE_URL` and a private `SESSION_SECRET` in the production environment. Run `npm run build` to generate the Prisma client, apply the database schema, and build the app. On a new database, create the first administrator account using environment variables:
+Set `DATABASE_URL` and a private `SESSION_SECRET` in the production environment. Run `npm run build` to generate the Prisma client, apply the database schema, seed configured accounts, and build the app.
 
-```bash
-INITIAL_ADMIN_EMAIL=admin@example.com \
-INITIAL_ADMIN_PASSWORD='use-a-unique-password-of-at-least-12-characters' \
-INITIAL_ADMIN_NAME='Platform Administrator' \
-npm run db:seed
-```
+To create initial admin, teacher, and student accounts, configure these variables in the Vercel production environment before building:
 
-The seed command creates the admin only when that email is unused. It never prints or replaces the password. Start the built app with `npm run start`.
+| Role | Email | Password | Optional display name |
+| --- | --- | --- | --- |
+| Admin | `INITIAL_ADMIN_EMAIL` | `INITIAL_ADMIN_PASSWORD` | `INITIAL_ADMIN_NAME` |
+| Teacher | `INITIAL_TEACHER_EMAIL` | `INITIAL_TEACHER_PASSWORD` | `INITIAL_TEACHER_NAME` |
+| Student | `INITIAL_STUDENT_EMAIL` | `INITIAL_STUDENT_PASSWORD` | `INITIAL_STUDENT_NAME` |
+
+Each role requires a distinct email and a password of at least 12 characters. Roles without configuration are skipped; incomplete or invalid configuration fails the build. The teacher is approved and receives a teacher profile; the student receives a student profile. Repeat builds preserve existing accounts and passwords. An email already assigned to another role fails seeding without changing any accounts. Production credentials belong in environment variables and must not be committed. The seed command never prints passwords.
+
+You can also run `npm run db:seed` separately with the same environment variables after applying the schema. Start the built app with `npm run start`.
 
 ## Teacher profiles and class reviews
 
@@ -43,4 +46,4 @@ GitHub Actions runs ESLint, TypeScript, and a production build for pull requests
 - `VERCEL_ORG_ID`
 - `VERCEL_PROJECT_ID`
 
-The Vercel project must have its production and preview `DATABASE_URL` and `SESSION_SECRET` variables configured, with a separate database for previews. Set the Vercel build command to `npm run build` (the default). Every build applies the Prisma schema to its configured database before compiling Next.js. A database connection or schema update failure stops deployment. The build does not accept destructive schema changes automatically and does not seed accounts; initialize the administrator separately using the command above.
+The Vercel project must have its production and preview `DATABASE_URL` and `SESSION_SECRET` variables configured, with a separate database for previews. Set the Vercel build command to `npm run build` (the default). Every build applies the Prisma schema to its configured database before compiling Next.js. A database connection or schema update failure stops deployment. The build does not accept destructive schema changes automatically. It seeds only accounts explicitly configured through the variables above; no default production credentials are created.
