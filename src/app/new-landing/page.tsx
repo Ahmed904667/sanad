@@ -2,24 +2,22 @@
 
 import React, { useEffect, useState, useMemo } from 'react';
 import Link from 'next/link';
-import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { useApp } from '@/context/AppContext';
 import { formatAvailabilityRanges } from '@/utils/timeFormat';
 import { PublicNavbar } from '@/components/PublicNavbar';
 import { PublicFooter } from '@/components/PublicFooter';
 import { PlansGrid } from '@/components/PlansGrid';
+import { LandingHero } from '@/components/LandingHero';
 import { QURAN_SURAHS } from '@/data/quranData';
 import {
-  User,
   GraduationCap,
   ShieldCheck,
   Clock,
   CheckCircle2,
   ChevronDown,
   ChevronUp,
-  ArrowRight,
-  Sliders
+  ArrowRight
 } from 'lucide-react';
 
 interface FaqItem {
@@ -117,99 +115,7 @@ export default function NewLandingPage() {
 
       <PublicNavbar />
 
-      {/* Introduction */}
-      <section className="relative flex min-h-[calc(100svh-4rem)] items-center overflow-hidden bg-white border-b border-slate-200 pt-12 pb-20 lg:pt-16 lg:pb-24">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 lg:gap-8 items-center">
-
-            {/* Hero Left: Academic Heading & Value Proposition */}
-            <div className="lg:col-span-7 space-y-6 text-center lg:text-start">
-
-              <div className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-slate-100 border border-slate-300 text-slate-800 text-xs font-extrabold">
-                <span className="w-2 h-2 rounded-full bg-emerald-600"></span>
-                <span>{isAr ? 'تعلّم القرآن مع معلّمين مجازين' : 'Learn the Quran with qualified teachers'}</span>
-              </div>
-
-              <h1 className="text-3xl sm:text-5xl lg:text-[54px] font-black text-slate-950 tracking-tight leading-[1.2]">
-                {isAr ? (
-                  <>
-                    تعلّم القرآن الكريم وتلاوته <br className="hidden sm:block" />
-                    مع <span className="text-emerald-800 underline decoration-amber-500/80 decoration-4 underline-offset-8">معلّمين مجازين</span>
-                  </>
-                ) : (
-                  <>
-                    Learn to recite and memorize the Quran with <span className="text-emerald-800">qualified teachers</span>
-                  </>
-                )}
-              </h1>
-
-              <p className="text-slate-600 text-sm sm:text-base lg:text-lg leading-relaxed max-w-2xl mx-auto lg:mx-0 font-normal">
-                {isAr
-                  ? 'تعلّم في حصص فردية مباشرة مع معلّمين مجازين. اختر هدفك في الحفظ أو المراجعة، وسنساعدك على تنظيم حصصك ومتابعة تقدّمك.'
-                  : 'Study one to one with qualified Quran teachers. Choose a memorization or revision goal, plan your lessons, and track your progress.'}
-              </p>
-
-              {/* Action Buttons */}
-              <div className="pt-2 flex flex-wrap items-center justify-center lg:justify-start gap-3.5">
-                <Link
-                  href="/register/student"
-                  className="px-8 py-4 rounded-xl bg-emerald-950 hover:bg-emerald-900 text-white font-extrabold text-sm shadow-md transition-all flex items-center gap-2"
-                >
-                  <User className="w-4 h-4 stroke-[2.5]" />
-                  <span>{isAr ? 'إنشاء حساب طالب' : 'Create a student account'}</span>
-                </Link>
-
-                <a
-                  href="#simulator"
-                  className="px-7 py-4 rounded-xl border-2 border-slate-300 hover:border-slate-400 text-slate-800 font-extrabold text-sm bg-white hover:bg-slate-50 transition-all flex items-center gap-2"
-                >
-                  <Sliders className="w-4 h-4 text-emerald-800" />
-                  <span>{isAr ? 'خطّط لحصصك' : 'Plan your lessons'}</span>
-                </a>
-              </div>
-
-              {/* Minimal Metric Tickers */}
-              <div className="pt-8 border-t border-slate-200 grid grid-cols-3 gap-6 text-center lg:text-start">
-                <div className="space-y-1">
-                  <div className="text-lg sm:text-xl font-black text-slate-950">{isAr ? 'حصص فردية' : 'Private lessons'}</div>
-                  <div className="text-xs font-semibold text-slate-500">{isAr ? 'لقاء مباشر مع معلّمك' : 'Live lessons with your teacher'}</div>
-                </div>
-                <div className="space-y-1">
-                  <div className="text-lg sm:text-xl font-black text-emerald-900">{isAr ? 'معلّمون مجازون' : 'Qualified teachers'}</div>
-                  <div className="text-xs font-semibold text-slate-500">{isAr ? 'خبرة وإجازة في تعليم القرآن' : 'Experienced in Quran teaching'}</div>
-                </div>
-                <div className="space-y-1">
-                  <div className="text-lg sm:text-xl font-black text-slate-950">{isAr ? 'حسب وقتك' : 'Your schedule'}</div>
-                  <div className="text-xs font-semibold text-slate-500">{isAr ? 'مواعيد تناسبك' : 'Choose a time that suits you'}</div>
-                </div>
-              </div>
-            </div>
-
-            {/* Hero portrait */}
-            <div className="lg:col-span-5 flex justify-center items-center py-4 lg:py-0">
-              <div className="relative isolate flex w-full max-w-[340px] sm:max-w-[420px] aspect-square items-end justify-center overflow-hidden">
-                <div className="sanad-portrait-glow absolute inset-[14%] rounded-full" aria-hidden="true" />
-                <div className="absolute inset-[17%] overflow-hidden rounded-full bg-[radial-gradient(circle_at_35%_30%,#d1fae5_0%,#6ee7b7_42%,#047857_100%)] shadow-[0_18px_50px_rgba(6,95,70,0.18)]">
-                  <Image
-                    src="/images/hero-quran-teacher-no-scarf.png"
-                    alt={isAr ? 'معلّم يقرأ القرآن الكريم' : 'A teacher reading the Quran'}
-                    fill
-                    sizes="(max-width: 768px) 230px, 290px"
-                    className="object-contain object-center"
-                    priority
-                  />
-                </div>
-                <div className="sanad-orbit absolute inset-[10%] rounded-full border border-emerald-700/20" aria-hidden="true" />
-                <div className="sanad-orbit-reverse absolute inset-[4%] rounded-full border border-dashed border-amber-500/40" aria-hidden="true" />
-                <div className="absolute inset-[1%] rounded-full border border-slate-200/80" aria-hidden="true" />
-                <span className="absolute right-[14%] top-[24%] z-20 h-2.5 w-2.5 rounded-full bg-amber-400 shadow-[0_0_16px_rgba(251,191,36,0.65)]" aria-hidden="true" />
-                <span className="absolute bottom-[22%] left-[12%] z-20 h-2 w-2 rounded-full bg-white shadow-[0_0_12px_rgba(255,255,255,0.8)]" aria-hidden="true" />
-              </div>
-            </div>
-
-          </div>
-        </div>
-      </section>
+      <LandingHero isAr={isAr} />
 
       {/* Lesson planner */}
       <section id="simulator" className="scroll-mt-20 py-20 bg-slate-50 border-b border-slate-200">

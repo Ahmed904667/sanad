@@ -1,0 +1,145 @@
+.hero {
+  --hero-bg: #f7faf8;
+  --hero-ink: #123d32;
+  --hero-muted: #50665d;
+  --hero-sage: #dcebe2;
+  --hero-line: #d6e2da;
+  background: var(--hero-bg);
+  border-bottom: 1px solid var(--hero-line);
+  font-family: var(--font-arabic);
+  padding: 80px 0 88px;
+}
+
+.layout {
+  width: min(100% - 64px, 1216px);
+  margin-inline: auto;
+  display: grid;
+  grid-template-columns: 1.12fr 1fr;
+  align-items: center;
+  gap: clamp(40px, 6vw, 88px);
+}
+
+.content { padding-block: 12px; }
+.eyebrow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--hero-ink);
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 24px;
+}
+.eyebrow svg { flex-shrink: 0; }
+.title {
+  color: var(--hero-ink);
+  font-size: clamp(40px, 4.5vw, 64px);
+  line-height: 1.4;
+  font-weight: 800;
+  text-wrap: balance;
+  max-width: 610px;
+}
+.description {
+  max-width: 510px;
+  margin-top: 24px;
+  color: var(--hero-muted);
+  font-size: 17px;
+  line-height: 1.95;
+  text-wrap: pretty;
+}
+.actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 32px; }
+.primary, .secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  min-height: 56px;
+  padding: 14px 24px;
+  border-radius: 12px;
+  font-size: 14px;
+  font-weight: 700;
+  transition: background-color 180ms, border-color 180ms, box-shadow 180ms;
+}
+.primary {
+  background: var(--hero-ink);
+  color: white;
+  border: 1px solid var(--hero-ink);
+  box-shadow: 0 6px 16px #123d3214;
+}
+.primary:hover { background: #205444; box-shadow: 0 8px 20px #123d3224; }
+.secondary { color: var(--hero-ink); border: 1px solid #9aafa2; background: transparent; }
+.secondary:hover { background: #eaf2ec; border-color: var(--hero-ink); }
+.ltrArrow { transform: rotate(90deg); }
+.benefits {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 24px;
+  padding-top: 28px;
+  margin-top: 28px;
+  border-top: 1px solid var(--hero-line);
+  color: var(--hero-muted);
+  font-size: 12px;
+  font-weight: 600;
+  list-style: none;
+}
+.benefits li { display: flex; align-items: center; gap: 7px; }
+.benefits svg { color: var(--hero-ink); flex-shrink: 0; }
+.visual { position: relative; width: 100%; max-width: 480px; margin-inline: auto; aspect-ratio: 0.94; }
+.arch {
+  position: absolute;
+  inset: 24px 12px 24px;
+  border-radius: 48% 48% 20px 20px;
+  background: var(--hero-sage);
+}
+.arch::after {
+  content: '';
+  position: absolute;
+  inset: 14px;
+  border: 1px solid #b2ccba;
+  border-radius: inherit;
+}
+.portrait { position: absolute; inset: 0 0 24px; overflow: hidden; border-radius: 0 0 24px 24px; }
+.image { object-fit: contain; object-position: center bottom; }
+.lessonNote {
+  position: absolute;
+  inset-inline: 32px;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 20px;
+  border: 1px solid var(--hero-line);
+  border-radius: 16px;
+  background: white;
+  box-shadow: 0 16px 40px #123d3210;
+}
+.noteIcon { display: grid; place-items: center; width: 48px; height: 48px; flex-shrink: 0; background: #edf5ef; color: var(--hero-ink); border-radius: 12px; }
+.lessonNote p { color: var(--hero-ink); font-size: 14px; font-weight: 700; }
+.lessonNote div > span { display: block; margin-top: 4px; color: var(--hero-muted); font-size: 12px; }
+
+@media (min-width: 1024px) {
+  .hero { min-height: min(740px, calc(100svh - 64px)); display: flex; align-items: center; }
+}
+@media (max-width: 1023px) {
+  .hero { padding: 56px 0 64px; }
+  .layout { grid-template-columns: 1fr; gap: 40px; }
+  .content { text-align: center; }
+  .eyebrow, .actions, .benefits { justify-content: center; }
+  .title, .description { margin-inline: auto; }
+  .visual { max-width: 460px; }
+  .lessonNote { text-align: start; }
+}
+@media (max-width: 600px) {
+  .hero { padding: 36px 0 48px; }
+  .layout { width: calc(100% - 40px); gap: 32px; }
+  .eyebrow { font-size: 12px; margin-bottom: 20px; }
+  .title { font-size: clamp(32px, 9vw, 44px); line-height: 1.45; }
+  .description { font-size: 15px; margin-top: 20px; }
+  .actions { flex-direction: column; margin-top: 24px; }
+  .primary, .secondary { width: 100%; min-height: 52px; }
+  .benefits { gap: 12px 18px; padding-top: 20px; margin-top: 24px; }
+  .lessonNote { inset-inline: 12px; padding: 16px; gap: 10px; }
+  .lessonNote p { font-size: 13px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .primary, .secondary { transition: none; }
+}
