@@ -53,7 +53,6 @@ export default function LoginPage() {
     event.preventDefault();
     await signIn(identifier, password);
   };
-  const handleQuickLogin = signIn;
 
   return (
     <div className="min-h-[85vh] bg-slate-50 flex items-center justify-center p-4">
@@ -70,49 +69,6 @@ export default function LoginPage() {
           <p className="text-xs text-slate-500 font-medium">
             {isAr ? 'ادخل إلى حسابك لمتابعة خطة الحفظ والتلاوة والمواعيد' : 'Access your Quran learning timetable & sessions'}
           </p>
-        </div>
-
-        {/* Development-only demo accounts */}
-        {process.env.NODE_ENV !== 'production' && (
-        <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-3.5 space-y-2.5">
-          <span className="text-[11px] font-bold text-slate-500 block text-center">
-            {isAr ? 'خيارات الدخول السريع المباشر:' : 'Quick 1-Click Access:'}
-          </span>
-          <div className="grid grid-cols-2 gap-1.5">
-            <button
-              type="button"
-              disabled={isSigningIn}
-              onClick={() => handleQuickLogin('abdulrahman@sanad.com', '123456')}
-              className="px-2.5 py-2 rounded-xl bg-white hover:bg-emerald-50 text-slate-800 hover:text-emerald-900 border border-slate-200 text-xs font-bold transition-all text-center shadow-2xs cursor-pointer"
-            >
-              {isAr ? 'طالب (عبد الرحمن)' : 'Student (Male)'}
-            </button>
-            <button
-              type="button"
-              disabled={isSigningIn}
-              onClick={() => handleQuickLogin('sulami@sanad.com', '123456')}
-              className="px-2.5 py-2 rounded-xl bg-white hover:bg-amber-50 text-slate-800 hover:text-amber-900 border border-slate-200 text-xs font-bold transition-all text-center shadow-2xs cursor-pointer"
-            >
-              {isAr ? 'معلم (د. السلمي)' : 'Teacher (Male)'}
-            </button>
-          </div>
-          <button
-            type="button"
-              disabled={isSigningIn}
-            onClick={() => handleQuickLogin('admin@sanad.com', '123456')}
-            className="w-full py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-amber-400 text-xs font-bold transition-all text-center shadow-2xs cursor-pointer"
-          >
-            {isAr ? 'لوحة تحكم مدير المنصة (Admin)' : 'Platform Admin'}
-          </button>
-        </div>
-        )}
-
-        {/* Divider */}
-        <div className="relative flex items-center justify-center">
-          <div className="border-t border-slate-200 w-full" />
-          <span className="bg-white px-3 text-[11px] font-bold text-slate-400 absolute">
-            {isAr ? 'أو عبر البريد الإلكتروني' : 'or with email'}
-          </span>
         </div>
 
         {/* Error Alert */}
