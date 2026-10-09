@@ -8,6 +8,9 @@
   border-bottom: 1px solid var(--hero-line);
   font-family: var(--font-arabic);
   padding: 80px 0 88px;
+  min-height: calc(100dvh - 64px);
+  display: flex;
+  align-items: center;
 }
 
 .layout {
@@ -20,16 +23,6 @@
 }
 
 .content { padding-block: 12px; }
-.eyebrow {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  color: var(--hero-ink);
-  font-size: 14px;
-  font-weight: 600;
-  margin-bottom: 24px;
-}
-.eyebrow svg { flex-shrink: 0; }
 .title {
   color: var(--hero-ink);
   font-size: clamp(40px, 4.5vw, 64px);
@@ -116,14 +109,11 @@
 .lessonNote p { color: var(--hero-ink); font-size: 14px; font-weight: 700; }
 .lessonNote div > span { display: block; margin-top: 4px; color: var(--hero-muted); font-size: 12px; }
 
-@media (min-width: 1024px) {
-  .hero { min-height: min(740px, calc(100svh - 64px)); display: flex; align-items: center; }
-}
 @media (max-width: 1023px) {
   .hero { padding: 56px 0 64px; }
   .layout { grid-template-columns: 1fr; gap: 40px; }
   .content { text-align: center; }
-  .eyebrow, .actions, .benefits { justify-content: center; }
+  .actions, .benefits { justify-content: center; }
   .title, .description { margin-inline: auto; }
   .visual { max-width: 460px; }
   .lessonNote { text-align: start; }
@@ -131,7 +121,6 @@
 @media (max-width: 600px) {
   .hero { padding: 36px 0 48px; }
   .layout { width: calc(100% - 40px); gap: 32px; }
-  .eyebrow { font-size: 12px; margin-bottom: 20px; }
   .title { font-size: clamp(32px, 9vw, 44px); line-height: 1.45; }
   .description { font-size: 15px; margin-top: 20px; }
   .actions { flex-direction: column; margin-top: 24px; }

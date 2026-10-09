@@ -29,10 +29,6 @@ export function PublicNavbar() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-4">
         <Link href="/" className="flex items-center gap-3 group shrink-0" aria-label={isAr ? 'سنَد - الصفحة الرئيسية' : 'Sanad home'}>
           <Image src="/logo.png" alt="Sanad" width={46} height={46} className="h-11 w-auto object-contain" priority />
-          <div className="hidden sm:block">
-            <span className="text-lg font-black text-emerald-950 block leading-tight">سَنَد</span>
-            <span className="text-[10px] font-bold text-slate-500 block">{isAr ? 'تعليم القرآن الكريم' : 'Quran Learning'}</span>
-          </div>
         </Link>
 
         <nav aria-label={isAr ? 'التنقل الرئيسي' : 'Main navigation'} className="hidden lg:flex items-center gap-5 text-xs font-semibold text-slate-700">

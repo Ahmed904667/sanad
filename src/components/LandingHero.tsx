@@ -1,6 +1,6 @@
 import Image from 'next/image';
 import Link from 'next/link';
-import { ArrowUpLeft, BookOpen, Check, GraduationCap, Sliders } from 'lucide-react';
+import { ArrowUpLeft, Check, GraduationCap, Sliders } from 'lucide-react';
 import styles from './LandingHero.module.css';
 
 export function LandingHero({ isAr }: { isAr: boolean }) {
@@ -8,10 +8,6 @@ export function LandingHero({ isAr }: { isAr: boolean }) {
     <section className={styles.hero} aria-labelledby="hero-heading">
       <div className={styles.layout}>
         <div className={styles.content}>
-          <p className={styles.eyebrow}>
-            <BookOpen size={18} aria-hidden="true" />
-            {isAr ? 'سَنَد، رفيقك في رحلة القرآن' : 'Sanad, your companion in learning the Quran'}
-          </p>
           <h1 id="hero-heading" className={styles.title}>
             {isAr ? 'رحلتك مع القرآن، تبدأ بسَنَد.' : 'Your Quran journey starts with Sanad.'}
           </h1>
