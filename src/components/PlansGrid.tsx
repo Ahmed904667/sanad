@@ -103,7 +103,7 @@ export const PlansGrid: React.FC<PlansGridProps> = ({ onSelectPlan, actionLabel 
                         : 'emerald-gradient-bg text-white hover:opacity-95'
                     }`}
                   >
-                    <span>{actionLabel ? (isAr ? actionLabel.ar : actionLabel.en) : (isAr ? 'اختيار الخطة والتحويل البنكي' : 'Select Plan & Bank Transfer')}</span>
+                    <span>{actionLabel ? (isAr ? actionLabel.ar : actionLabel.en) : (isAr ? 'اختر الخطة' : 'Choose plan')}</span>
                     {isAr ? <ArrowLeft className="w-4 h-4" /> : <ArrowRight className="w-4 h-4" />}
                   </button>
                 </div>

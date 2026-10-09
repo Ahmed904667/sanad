@@ -26,16 +26,16 @@ export function PublicNavbar() {
 
   return (
     <header className="sticky top-0 z-50 w-full border-b border-slate-200 bg-white/95 backdrop-blur-md">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-4">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-4 xl:grid xl:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)]">
         <Link href="/" className="flex items-center gap-3 group shrink-0" aria-label={isAr ? 'سنَد - الصفحة الرئيسية' : 'Sanad home'}>
           <Image src="/logo.png" alt="Sanad" width={46} height={46} className="h-11 w-auto object-contain" priority />
         </Link>
 
-        <nav aria-label={isAr ? 'التنقل الرئيسي' : 'Main navigation'} className="hidden lg:flex items-center gap-5 text-xs font-semibold text-slate-700">
+        <nav aria-label={isAr ? 'التنقل الرئيسي' : 'Main navigation'} className="hidden xl:flex items-center justify-center gap-5 text-xs font-semibold text-slate-700">
           {[
             ['simulator', isAr ? 'خطّط لحصصك' : 'Lesson planner'],
             ['classroom', isAr ? 'الحصص المباشرة' : 'Live lessons'],
-                        ['plans', isAr ? 'الأسعار' : 'Pricing'],
+            ['plans', isAr ? 'الأسعار' : 'Pricing'],
             ['workflow', isAr ? 'طريقة التسجيل' : 'How to join'],
             ['faq', isAr ? 'الأسئلة الشائعة' : 'FAQs'],
           ].map(([id, label]) => (
@@ -43,10 +43,11 @@ export function PublicNavbar() {
               {label}
             </Link>
           ))}
-<Link href="/teachers" className="hover:text-emerald-800">{isAr ? 'المعلمون' : 'Teachers'}</Link><Link href="/help" className="hover:text-emerald-800">{isAr ? 'المساعدة' : 'Help'}</Link>
+          <Link href="/teachers" className="hover:text-emerald-800 whitespace-nowrap">{isAr ? 'المعلمون' : 'Teachers'}</Link>
+          <Link href="/help" className="hover:text-emerald-800 whitespace-nowrap">{isAr ? 'المساعدة' : 'Help'}</Link>
         </nav>
 
-        <div className="flex items-center gap-2 sm:gap-3">
+        <div className="flex items-center gap-2 sm:gap-3 xl:justify-self-end">
           <button
             type="button"
             onClick={toggleLanguage}
