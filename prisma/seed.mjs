@@ -11,47 +11,28 @@ async function hashPassword(password) {
   return `scrypt$16384$8$1$${salt.toString('base64url')}$${key.toString('base64url')}`;
 }
 
-function configuredAccounts() {
-  const optional = process.argv.includes('--if-configured');
-  const defaults = { ADMIN: 'Platform Administrator', TEACHER: 'Quran Teacher', STUDENT: 'Student' };
-  const accounts = [];
-  for (const role of [Role.ADMIN, Role.TEACHER, Role.STUDENT]) {
-    const prefix = `INITIAL_${role}`;
-    const email = process.env[`${prefix}_EMAIL`]?.trim().toLowerCase();
-    const password = process.env[`${prefix}_PASSWORD`];
-    const name = process.env[`${prefix}_NAME`]?.trim() || defaults[role];
-    if (!email && !password && !process.env[`${prefix}_NAME`]) continue;
-    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || !password || password.length < 12) {
-      throw new Error(`Set a valid ${prefix}_EMAIL and a ${prefix}_PASSWORD of at least 12 characters.`);
-    }
-    if (accounts.some(account => account.email === email)) {
-      throw new Error('Initial accounts must use different email addresses.');
-    }
-    accounts.push({ email, password, name, role });
-  }
-  if (!accounts.length && !optional) {
-    throw new Error('Configure INITIAL_ADMIN, INITIAL_TEACHER, or INITIAL_STUDENT email and password variables.');
-  }
-  return accounts;
+function initialAccounts() {
+  return [
+    { email: 'admin@sanad.com', name: 'Platform Administrator', role: Role.ADMIN },
+    { email: 'teacher@sanad.com', name: 'Quran Teacher', role: Role.TEACHER },
+    { email: 'student@sanad.com', name: 'Student', role: Role.STUDENT },
+  ].map(account => ({ ...account, password: randomBytes(24).toString('base64url') }));
 }
 
 async function main() {
-  const accounts = configuredAccounts();
-  if (!accounts.length) {
-    console.log('No initial account credentials configured; account seeding skipped.');
-    return;
-  }
+  const accounts = initialAccounts();
   // Hash before the transaction so expensive password work does not hold database locks.
   const prepared = await Promise.all(accounts.map(async ({ password, ...account }) => ({
-    ...account, passwordHash: await hashPassword(password),
+    ...account, password, passwordHash: await hashPassword(password),
   })));
-  await prisma.$transaction(async tx => {
-    for (const { email, name, role, passwordHash } of prepared) {
+  const created = await prisma.$transaction(async tx => {
+    const credentials = [];
+    for (const { email, name, role, password, passwordHash } of prepared) {
       const existing = await tx.user.findUnique({ where: { email } });
       if (existing && existing.role !== role) {
-        throw new Error(`The configured ${role} email already belongs to a different role.`);
+        throw new Error(`The initial ${role} email already belongs to a different role.`);
       }
-      await tx.user.upsert({
+      const user = await tx.user.upsert({
         where: { email },
         update: {},
         create: {
@@ -74,9 +55,17 @@ async function main() {
           } : {}),
         },
       });
+      // Check the returned row too: another build may have created it concurrently.
+      if (user.role !== role) throw new Error(`The initial ${role} email already belongs to a different role.`);
+      if (user.passwordHash === passwordHash) credentials.push({ role, email, password });
     }
+    return credentials;
   });
-  console.log('Configured initial accounts are ready; existing accounts were preserved.');
+  if (created.length) {
+    console.log('Initial login credentials — save these from your private build logs. Passwords are shown only on account creation.');
+    for (const account of created) console.log(JSON.stringify(account));
+  }
+  console.log('Initial accounts are ready; existing accounts and passwords were preserved.');
 }
 
 main().catch(error => {

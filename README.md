@@ -20,19 +20,21 @@ Development includes demo sign-in accounts. They use the demo password `123456` 
 
 ## Production setup
 
-Set `DATABASE_URL` and a private `SESSION_SECRET` in the production environment. Run `npm run build` to generate the Prisma client, apply the database schema, seed configured accounts, and build the app.
+Set `DATABASE_URL` and a private `SESSION_SECRET` in the production environment. Run `npm run build` to generate the Prisma client, apply the database schema, create initial accounts, and build the app. No account environment variables are required.
 
-To create initial admin, teacher, and student accounts, configure these variables in the Vercel production environment before building:
+The first build creates these accounts if their email addresses are unused:
 
-| Role | Email | Password | Optional display name |
-| --- | --- | --- | --- |
-| Admin | `INITIAL_ADMIN_EMAIL` | `INITIAL_ADMIN_PASSWORD` | `INITIAL_ADMIN_NAME` |
-| Teacher | `INITIAL_TEACHER_EMAIL` | `INITIAL_TEACHER_PASSWORD` | `INITIAL_TEACHER_NAME` |
-| Student | `INITIAL_STUDENT_EMAIL` | `INITIAL_STUDENT_PASSWORD` | `INITIAL_STUDENT_NAME` |
+| Role | Email |
+| --- | --- |
+| Admin | `admin@sanad.com` |
+| Teacher | `teacher@sanad.com` |
+| Student | `student@sanad.com` |
 
-Each role requires a distinct email and a password of at least 12 characters. Roles without configuration are skipped; incomplete or invalid configuration fails the build. The teacher is approved and receives a teacher profile; the student receives a student profile. Repeat builds preserve existing accounts and passwords. An email already assigned to another role fails seeding without changing any accounts. Production credentials belong in environment variables and must not be committed. The seed command never prints passwords.
+Each new account gets its own randomly generated 32-character password. Its email and password appear once in the build logs after the seeding transaction succeeds. Save these credentials from the first build's private logs, including if later compilation fails. Passwords are hashed in the database and cannot be retrieved by subsequent builds. Keep access to build logs restricted because they contain these initial credentials.
 
-You can also run `npm run db:seed` separately with the same environment variables after applying the schema. Start the built app with `npm run start`.
+Repeat builds preserve existing accounts and passwords. An email belonging to a different role fails seeding without changing any accounts. The teacher is approved and receives a teacher profile; the student receives a student profile. Existing accounts do not get new credentials printed.
+
+You can also run `npm run db:seed` after applying the schema. Start the built app with `npm run start`.
 
 ## Teacher profiles and class reviews
 
@@ -46,4 +48,4 @@ GitHub Actions runs ESLint, TypeScript, and a production build for pull requests
 - `VERCEL_ORG_ID`
 - `VERCEL_PROJECT_ID`
 
-The Vercel project must have its production and preview `DATABASE_URL` and `SESSION_SECRET` variables configured, with a separate database for previews. Set the Vercel build command to `npm run build` (the default). Every build applies the Prisma schema to its configured database before compiling Next.js. A database connection or schema update failure stops deployment. The build does not accept destructive schema changes automatically. It seeds only accounts explicitly configured through the variables above; no default production credentials are created.
+The Vercel project must have its production and preview `DATABASE_URL` and `SESSION_SECRET` variables configured, with a separate database for previews. Set the Vercel build command to `npm run build` (the default). Every build applies the Prisma schema to its configured database before compiling Next.js. A database connection or schema update failure stops deployment. The build does not accept destructive schema changes automatically. It creates missing initial accounts with generated passwords as described above. CI validation uses the same automatic seeding against its disposable database.
